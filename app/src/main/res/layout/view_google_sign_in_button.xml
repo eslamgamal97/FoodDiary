@@ -1,0 +1,16 @@
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/custom_google_button"
+    android:layout_width="wrap_content"
+    android:layout_height="48dp"
+    android:orientation="horizontal"
+    android:gravity="center_vertical"
+    android:paddingHorizontal="16dp">
+
+    <!-- Google "G" Logo -->
+    <ImageView
+        android:layout_width="18dp"
+        android:layout_height="18dp"
+        android:src="@drawable/ic_google_logo"
+        android:contentDescription="@string/sign_in_with_google" />
+
+</LinearLayout>

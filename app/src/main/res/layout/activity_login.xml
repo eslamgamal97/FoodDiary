@@ -1,0 +1,38 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:orientation="vertical"
+    android:gravity="center"
+    android:background="#15AE5C"
+    tools:context=".LoginActivity">
+
+    <!-- App Logo -->
+    <ImageView
+        android:id="@+id/app_logo"
+        android:layout_width="120dp"
+        android:layout_height="120dp"
+        android:src="@drawable/food_diary_logo"
+        android:contentDescription="@string/app_name"
+        android:layout_marginBottom="40dp" />
+
+    <!-- Custom Google Sign In Button -->
+    <LinearLayout
+        android:id="@+id/custom_google_button"
+        android:layout_width="wrap_content"
+        android:layout_height="48dp"
+        android:orientation="horizontal"
+        android:gravity="center_vertical"
+        android:paddingHorizontal="16dp"
+        android:clickable="true"
+        android:focusable="true">
+
+        <ImageView
+            android:layout_width="200dp"
+            android:layout_height="200dp"
+            android:src="@drawable/ic_google_logo"
+            android:contentDescription="@string/sign_in_with_google" />
+    </LinearLayout>
+
+</LinearLayout>

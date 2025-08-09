@@ -1,0 +1,47 @@
+{
+  "project_info": {
+    "project_number": "46830873211",
+    "project_id": "fooddiary-7ea19",
+    "storage_bucket": "fooddiary-7ea19.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:46830873211:android:39e5a08ccefe99476ad0de",
+        "android_client_info": {
+          "package_name": "com.eslamgamal.fooddiary"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "46830873211-3v7m832jgu106jm7nen990vo5vhed09g.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.eslamgamal.fooddiary",
+            "certificate_hash": "90b91cabbb7d86b023712bf44952de2a22e0956a"
+          }
+        },
+        {
+          "client_id": "46830873211-uoovfalmgs5at9rhdr3n0vo7iqcdldf1.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyBi0cwfK10S9G-h6FYo7Lpb-xFCLIc8g_M"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "46830873211-uoovfalmgs5at9rhdr3n0vo7iqcdldf1.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

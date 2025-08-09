@@ -1,0 +1,4 @@
+<resources>
+    <string name="app_name">FoodDiary</string>
+    <string name="sign_in_with_google">Sign in with Google</string>
+</resources>
