@@ -3,4 +3,5 @@
     <string name="sign_in_with_google">Sign in with Google</string>
     <string name="navigation_drawer_open">Open navigation drawer</string>
     <string name="navigation_drawer_close">Close navigation drawer</string>
+    <string name="menu">Menu</string>
 </resources>

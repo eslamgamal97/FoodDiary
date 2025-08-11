@@ -1,72 +1,78 @@
 package com.eslamgamal.fooddiary;
 
-import android.content.Intent;
-import android.graphics.drawable.Drawable;
 import android.os.Bundle;
-import android.util.TypedValue;
-import android.view.MenuItem;
+import android.view.View;
+import android.widget.ImageButton;
 
+import androidx.activity.OnBackPressedCallback;
 import androidx.annotation.NonNull;
-import androidx.appcompat.app.ActionBarDrawerToggle;
 import androidx.appcompat.app.AppCompatActivity;
 import androidx.appcompat.widget.Toolbar;
-import androidx.core.content.ContextCompat;
+import androidx.core.view.GravityCompat;
 import androidx.drawerlayout.widget.DrawerLayout;
 
 import com.google.android.material.navigation.NavigationView;
-import com.google.firebase.auth.FirebaseAuth;
 
 public class MainActivity extends AppCompatActivity {
 
     private DrawerLayout drawerLayout;
     private NavigationView navigationView;
-    private Toolbar toolbar;
-    private FirebaseAuth mAuth;
+    private ImageButton menuButton;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_main);
 
-        mAuth = FirebaseAuth.getInstance();
-
         // Setup Toolbar
-        toolbar = findViewById(R.id.toolbar);
+        Toolbar toolbar = findViewById(R.id.toolbar);
         setSupportActionBar(toolbar);
 
-        // Enlarge the menu icon
-        Drawable menuIcon = ContextCompat.getDrawable(this, R.drawable.ic_menu);
-        if (menuIcon != null) {
-            int sizeInDp = 100; // desired size in dp
-            int sizeInPx = (int) TypedValue.applyDimension(
-                    TypedValue.COMPLEX_UNIT_DIP, sizeInDp, getResources().getDisplayMetrics());
-            menuIcon.setBounds(0, 0, sizeInPx, sizeInPx);
-            toolbar.setNavigationIcon(menuIcon);
+        // Remove default title text
+        if (getSupportActionBar() != null) {
+            getSupportActionBar().setDisplayShowTitleEnabled(false);
         }
-
+        // Drawer & Navigation
         drawerLayout = findViewById(R.id.drawer_layout);
         navigationView = findViewById(R.id.navigation_view);
+        menuButton = findViewById(R.id.menu_button);
 
-        ActionBarDrawerToggle toggle = new ActionBarDrawerToggle(
-                this, drawerLayout, toolbar,
-                R.string.navigation_drawer_open,
-                R.string.navigation_drawer_close);
+        // Open drawer when menu button clicked
+        menuButton.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                if (!drawerLayout.isDrawerOpen(GravityCompat.START)) {
+                    drawerLayout.openDrawer(GravityCompat.START);
+                } else {
+                    drawerLayout.closeDrawer(GravityCompat.START);
+                }
+            }
+        });
 
-        drawerLayout.addDrawerListener(toggle);
-        toggle.syncState();
-
+        // Handle navigation menu item clicks
         navigationView.setNavigationItemSelectedListener(new NavigationView.OnNavigationItemSelectedListener() {
             @Override
-            public boolean onNavigationItemSelected(@NonNull MenuItem item) {
-                if (item.getItemId() == R.id.nav_logout) {
-                    mAuth.signOut();
-                    Intent intent = new Intent(MainActivity.this, LoginActivity.class);
-                    intent.setFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TASK);
-                    startActivity(intent);
-                    finish();
-                    return true;
+            public boolean onNavigationItemSelected(@NonNull android.view.MenuItem item) {
+                int id = item.getItemId();
+                if (id == R.id.nav_logout) {
+                    // TODO: Handle logout
                 }
-                return false;
+                drawerLayout.closeDrawer(GravityCompat.START);
+                return true;
+            }
+        });
+
+        // Modern back press handling
+        getOnBackPressedDispatcher().addCallback(this, new OnBackPressedCallback(true) {
+            @Override
+            public void handleOnBackPressed() {
+                if (drawerLayout.isDrawerOpen(GravityCompat.START)) {
+                    drawerLayout.closeDrawer(GravityCompat.START);
+                } else {
+                    // Allow normal back press behavior
+                    setEnabled(false);
+                    MainActivity.super.onBackPressed();
+                }
             }
         });
     }

@@ -7,47 +7,65 @@
 
     <!-- Main content -->
     <LinearLayout
-        android:orientation="vertical"
         android:layout_width="match_parent"
-        android:layout_height="match_parent">
-
+        android:layout_height="match_parent"
+        android:orientation="vertical">
+        <!-- Space for status bar -->
+        <View
+            android:layout_width="match_parent"
+            android:layout_height="15dp"
+            android:background="@color/green_primary" />
         <!-- Toolbar -->
-        <com.google.android.material.appbar.MaterialToolbar
+        <androidx.appcompat.widget.Toolbar
             android:id="@+id/toolbar"
             android:layout_width="match_parent"
             android:layout_height="?attr/actionBarSize"
-            android:elevation="4dp"
-            android:paddingTop="20dp"
             android:background="@color/green_primary"
+            app:title=""
             app:popupTheme="@style/ThemeOverlay.AppCompat.Light">
 
-            <TextView
+            <!-- FrameLayout allows absolute positioning inside Toolbar -->
+            <FrameLayout
                 android:layout_width="match_parent"
-                android:layout_height="match_parent"
-                android:gravity="center_vertical"
-                android:layout_marginStart="90dp"
-                android:text="Food Diary"
-                android:textColor="@android:color/white"
-                android:textSize="20sp"
-                android:textStyle="bold" />
-        </com.google.android.material.appbar.MaterialToolbar>
+                android:layout_height="match_parent">
 
-        <!-- Main content area -->
+                <ImageButton
+                    android:id="@+id/menu_button"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_gravity="start|center_vertical"
+                    android:padding="12dp"
+                    android:background="?attr/selectableItemBackgroundBorderless"
+                    android:src="@drawable/ic_menu"
+                    android:contentDescription="@string/menu" />
+
+                <ImageView
+                    android:layout_width="184dp"
+                    android:layout_height="160dp"
+                    android:layout_gravity="center"
+                    android:contentDescription="@string/app_name"
+                    android:scaleType="fitCenter"
+                    android:src="@drawable/food_diary_header"
+                    android:translationX="-16dp" />
+
+            </FrameLayout>
+        </androidx.appcompat.widget.Toolbar>
+
+        <!-- Your main content -->
+
         <FrameLayout
             android:id="@+id/content_frame"
             android:layout_width="match_parent"
-            android:layout_height="match_parent"
-            android:background="@android:color/white" />
-
+            android:layout_height="match_parent" />
     </LinearLayout>
 
-    <!-- Navigation Drawer -->
+    <!-- Navigation View -->
     <com.google.android.material.navigation.NavigationView
         android:id="@+id/navigation_view"
         android:layout_width="wrap_content"
         android:layout_height="match_parent"
         android:layout_gravity="start"
-        app:headerLayout="@layout/nav_header"
-        app:menu="@menu/nav_menu" />
+        app:menu="@menu/drawer_menu"
+        app:headerLayout="@layout/nav_header" />
 
 </androidx.drawerlayout.widget.DrawerLayout>
