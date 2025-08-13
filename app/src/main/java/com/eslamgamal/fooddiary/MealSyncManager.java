@@ -1,0 +1,299 @@
+package com.eslamgamal.fooddiary;
+
+import android.content.Context;
+import android.content.SharedPreferences;
+import android.util.Log;
+
+import java.util.ArrayList;
+import java.util.HashSet;
+import java.util.List;
+import java.util.Set;
+
+public class MealSyncManager {
+    private static final String TAG = "MealSyncManager";
+    private static final String PREFS_NAME = "meal_sync_prefs";
+    private static final String KEY_PENDING_SYNC = "pending_sync_meals";
+    private static final String KEY_LAST_SYNC = "last_sync_timestamp";
+    private static final String KEY_SPREADSHEET_ID = "spreadsheet_id";
+
+    private Context context;
+    private GoogleSheetsManager sheetsManager;
+    private SharedPreferences prefs;
+
+    // Callbacks
+    public interface SyncStatusListener {
+        void onSyncStarted();
+        void onSyncCompleted(boolean success, String message);
+        void onSyncProgress(int completed, int total);
+    }
+
+    public MealSyncManager(Context context) {
+        this.context = context;
+        this.prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE);
+        this.sheetsManager = new GoogleSheetsManager(context);
+    }
+
+    public void syncMeal(Meal meal, SyncStatusListener listener) {
+        if (listener != null) {
+            listener.onSyncStarted();
+        }
+
+        sheetsManager.syncMealToSheets(meal, new GoogleSheetsManager.SyncCallback() {
+            @Override
+            public void onSuccess(String message) {
+                updateLastSyncTime();
+                if (listener != null) {
+                    listener.onSyncCompleted(true, message);
+                }
+                Log.d(TAG, "Meal synced successfully: " + meal.getName());
+            }
+
+            @Override
+            public void onError(String error) {
+                // Add to pending sync for retry later
+                addToPendingSync(meal);
+                if (listener != null) {
+                    listener.onSyncCompleted(false, error);
+                }
+                Log.e(TAG, "Failed to sync meal: " + error);
+            }
+        });
+    }
+
+    public void syncMultipleMeals(List<Meal> meals, SyncStatusListener listener) {
+        if (meals.isEmpty()) return;
+
+        if (listener != null) {
+            listener.onSyncStarted();
+        }
+
+        sheetsManager.syncMultipleMealsToSheets(meals, new GoogleSheetsManager.SyncCallback() {
+            @Override
+            public void onSuccess(String message) {
+                updateLastSyncTime();
+                if (listener != null) {
+                    listener.onSyncCompleted(true, message);
+                }
+                Log.d(TAG, "Multiple meals synced successfully");
+            }
+
+            @Override
+            public void onError(String error) {
+                // Add all meals to pending sync for retry later
+                addMultipleToPendingSync(meals);
+                if (listener != null) {
+                    listener.onSyncCompleted(false, error);
+                }
+                Log.e(TAG, "Failed to sync multiple meals: " + error);
+            }
+        });
+    }
+
+    public void loadMealsFromCloud(GoogleSheetsManager.LoadCallback callback) {
+        sheetsManager.loadMealsFromSheets(callback);
+    }
+
+    public void loadMealsForDate(String date, GoogleSheetsManager.LoadCallback callback) {
+        sheetsManager.loadMealsForDate(date, callback);
+    }
+
+    public void deleteMeal(Meal meal, SyncStatusListener listener) {
+        if (listener != null) {
+            listener.onSyncStarted();
+        }
+
+        sheetsManager.deleteMealFromSheets(meal, new GoogleSheetsManager.SyncCallback() {
+            @Override
+            public void onSuccess(String message) {
+                updateLastSyncTime();
+                if (listener != null) {
+                    listener.onSyncCompleted(true, message);
+                }
+                Log.d(TAG, "Meal deleted successfully: " + meal.getName());
+            }
+
+            @Override
+            public void onError(String error) {
+                if (listener != null) {
+                    listener.onSyncCompleted(false, error);
+                }
+                Log.e(TAG, "Failed to delete meal: " + error);
+            }
+        });
+    }
+
+    public void retryPendingSync(SyncStatusListener listener) {
+        Set<String> pendingMeals = prefs.getStringSet(KEY_PENDING_SYNC, new HashSet<>());
+        if (pendingMeals.isEmpty()) {
+            if (listener != null) {
+                listener.onSyncCompleted(true, "No pending meals to sync");
+            }
+            return;
+        }
+
+        if (listener != null) {
+            listener.onSyncStarted();
+        }
+
+        // Convert stored meal data back to Meal objects and sync
+        // This is a simplified version - you might want to store more detailed meal info
+        List<Meal> mealsToSync = new ArrayList<>();
+        for (String mealData : pendingMeals) {
+            // Parse meal data (you'll need to implement proper serialization)
+            Meal meal = parseMealFromString(mealData);
+            if (meal != null) {
+                mealsToSync.add(meal);
+            }
+        }
+
+        if (!mealsToSync.isEmpty()) {
+            syncMultipleMeals(mealsToSync, new SyncStatusListener() {
+                @Override
+                public void onSyncStarted() {
+                    // Already notified
+                }
+
+                @Override
+                public void onSyncCompleted(boolean success, String message) {
+                    if (success) {
+                        clearPendingSync();
+                    }
+                    if (listener != null) {
+                        listener.onSyncCompleted(success, message);
+                    }
+                }
+
+                @Override
+                public void onSyncProgress(int completed, int total) {
+                    if (listener != null) {
+                        listener.onSyncProgress(completed, total);
+                    }
+                }
+            });
+        }
+    }
+
+    public void performFullSync(List<Meal> localMeals, SyncStatusListener listener) {
+        if (listener != null) {
+            listener.onSyncStarted();
+        }
+
+        // First, load all meals from cloud
+        sheetsManager.loadMealsFromSheets(new GoogleSheetsManager.LoadCallback() {
+            @Override
+            public void onMealsLoaded(List<Meal> cloudMeals) {
+                // Compare local and cloud meals
+                List<Meal> mealsToUpload = findMealsToUpload(localMeals, cloudMeals);
+
+                if (mealsToUpload.isEmpty()) {
+                    if (listener != null) {
+                        listener.onSyncCompleted(true, "All meals are already synced");
+                    }
+                    return;
+                }
+
+                // Upload missing meals
+                syncMultipleMeals(mealsToUpload, listener);
+            }
+
+            @Override
+            public void onError(String error) {
+                if (listener != null) {
+                    listener.onSyncCompleted(false, "Failed to load cloud data: " + error);
+                }
+            }
+        });
+    }
+
+    private List<Meal> findMealsToUpload(List<Meal> localMeals, List<Meal> cloudMeals) {
+        List<Meal> mealsToUpload = new ArrayList<>();
+
+        // Create a set of cloud meal signatures for quick lookup
+        Set<String> cloudMealSignatures = new HashSet<>();
+        for (Meal cloudMeal : cloudMeals) {
+            cloudMealSignatures.add(createMealSignature(cloudMeal));
+        }
+
+        // Find local meals that aren't in cloud
+        for (Meal localMeal : localMeals) {
+            if (!cloudMealSignatures.contains(createMealSignature(localMeal))) {
+                mealsToUpload.add(localMeal);
+            }
+        }
+
+        return mealsToUpload;
+    }
+
+    private String createMealSignature(Meal meal) {
+        // Create a unique signature for comparing meals
+        return meal.getDate() + "|" + meal.getCategory() + "|" + meal.getName() + "|" + meal.getTimestamp().getTime();
+    }
+
+    private void addToPendingSync(Meal meal) {
+        Set<String> pendingMeals = new HashSet<>(prefs.getStringSet(KEY_PENDING_SYNC, new HashSet<>()));
+        pendingMeals.add(serializeMeal(meal));
+        prefs.edit().putStringSet(KEY_PENDING_SYNC, pendingMeals).apply();
+    }
+
+    private void addMultipleToPendingSync(List<Meal> meals) {
+        Set<String> pendingMeals = new HashSet<>(prefs.getStringSet(KEY_PENDING_SYNC, new HashSet<>()));
+        for (Meal meal : meals) {
+            pendingMeals.add(serializeMeal(meal));
+        }
+        prefs.edit().putStringSet(KEY_PENDING_SYNC, pendingMeals).apply();
+    }
+
+    private void clearPendingSync() {
+        prefs.edit().remove(KEY_PENDING_SYNC).apply();
+    }
+
+    private void updateLastSyncTime() {
+        prefs.edit().putLong(KEY_LAST_SYNC, System.currentTimeMillis()).apply();
+    }
+
+    public long getLastSyncTime() {
+        return prefs.getLong(KEY_LAST_SYNC, 0);
+    }
+
+    public boolean hasPendingSync() {
+        Set<String> pendingMeals = prefs.getStringSet(KEY_PENDING_SYNC, new HashSet<>());
+        return !pendingMeals.isEmpty();
+    }
+
+    public int getPendingSyncCount() {
+        Set<String> pendingMeals = prefs.getStringSet(KEY_PENDING_SYNC, new HashSet<>());
+        return pendingMeals.size();
+    }
+
+    // Simple serialization methods (you might want to use JSON or a more robust approach)
+    private String serializeMeal(Meal meal) {
+        return meal.getName() + ";" + meal.getCategory() + ";" + meal.getDate() + ";" + meal.getTimestamp().getTime();
+    }
+
+    private Meal parseMealFromString(String mealData) {
+        try {
+            String[] parts = mealData.split(";");
+            if (parts.length >= 4) {
+                String name = parts[0];
+                String category = parts[1];
+                String date = parts[2];
+                long timestamp = Long.parseLong(parts[3]);
+
+                return new Meal(name, category, new java.util.Date(timestamp), date);
+            }
+        } catch (Exception e) {
+            Log.e(TAG, "Failed to parse meal data: " + mealData, e);
+        }
+        return null;
+    }
+
+    public String getSpreadsheetUrl() {
+        return sheetsManager.getSpreadsheetUrl();
+    }
+
+    public void shutdown() {
+        if (sheetsManager != null) {
+            sheetsManager.shutdown();
+        }
+    }
+}

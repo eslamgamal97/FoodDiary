@@ -1,6 +1,44 @@
 <?xml version="1.0" encoding="utf-8"?>
 <menu xmlns:android="http://schemas.android.com/apk/res/android">
-    <item
-        android:id="@+id/nav_logout"
-        android:title="Logout" />
+
+    <group android:id="@+id/group_main">
+        <item
+            android:id="@+id/nav_home"
+            android:icon="@drawable/ic_home"
+            android:title="Home" />
+
+        <item
+            android:id="@+id/nav_calendar"
+            android:icon="@android:drawable/ic_menu_today"
+            android:title="Calendar View" />
+    </group>
+
+    <group
+        android:id="@+id/group_sync"
+        android:checkableBehavior="none">
+        <item
+            android:id="@+id/nav_sync_now"
+            android:icon="@android:drawable/ic_menu_rotate"
+            android:title="Sync Now" />
+
+        <item
+            android:id="@+id/nav_view_spreadsheet"
+            android:icon="@android:drawable/ic_menu_view"
+            android:title="View Spreadsheet" />
+
+        <item
+            android:id="@+id/nav_sync_settings"
+            android:icon="@android:drawable/ic_menu_preferences"
+            android:title="Sync Settings" />
+    </group>
+
+    <group
+        android:id="@+id/group_account"
+        android:checkableBehavior="none">
+        <item
+            android:id="@+id/nav_logout"
+            android:icon="@drawable/ic_logout"
+            android:title="Logout" />
+    </group>
+
 </menu>

@@ -27,10 +27,23 @@ android {
         sourceCompatibility JavaVersion.VERSION_11
         targetCompatibility JavaVersion.VERSION_11
     }
+
+    // Add packaging options to handle duplicate files
+    packagingOptions {
+        pickFirst '**/META-INF/DEPENDENCIES'
+        pickFirst '**/META-INF/LICENSE'
+        pickFirst '**/META-INF/LICENSE.txt'
+        pickFirst '**/META-INF/NOTICE'
+        pickFirst '**/META-INF/NOTICE.txt'
+        pickFirst '**/META-INF/ASL2.0'
+        pickFirst '**/META-INF/LGPL2.1'
+        exclude 'META-INF/INDEX.LIST'
+        exclude 'META-INF/io.netty.versions.properties'
+    }
 }
 
 dependencies {
-
+    // Existing dependencies
     implementation libs.appcompat
     implementation libs.material
     implementation libs.activity
@@ -38,8 +51,33 @@ dependencies {
     testImplementation libs.junit
     androidTestImplementation libs.ext.junit
     androidTestImplementation libs.espresso.core
+
+    // Firebase and Google Play Services
     implementation 'com.google.android.gms:play-services-auth:21.2.0'
     implementation 'com.google.firebase:firebase-auth:23.0.0'
+
+    // Google Sheets API dependencies
+    implementation 'com.google.apis:google-api-services-sheets:v4-rev20220927-2.0.0'
+    implementation 'com.google.api-client:google-api-client-android:2.0.0'
+    implementation 'com.google.oauth-client:google-oauth-client-jetty:1.34.1'
+
+    // HTTP Transport and JSON support
+    implementation 'com.google.http-client:google-http-client-gson:1.42.3'
+    implementation 'com.google.http-client:google-http-client-jackson2:1.42.3'
+    implementation 'com.google.http-client:google-http-client-android:1.42.3'
+
+    // Google Drive API (needed for spreadsheet creation)
+    implementation 'com.google.apis:google-api-services-drive:v3-rev20220815-2.0.0'
+
+    // JSON parsing
+    implementation 'com.google.code.gson:gson:2.10.1'
+
+    // Apache HTTP components
+    implementation 'org.apache.httpcomponents:httpclient:4.5.14'
+    implementation 'org.apache.httpcomponents:httpcore:4.4.16'
+
+    // For background threading
+    implementation 'androidx.work:work-runtime:2.9.0'
 }
 
 apply plugin: 'com.google.gms.google-services'
