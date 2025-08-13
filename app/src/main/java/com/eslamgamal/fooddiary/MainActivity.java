@@ -10,8 +10,14 @@ import androidx.appcompat.app.AppCompatActivity;
 import androidx.appcompat.widget.Toolbar;
 import androidx.core.view.GravityCompat;
 import androidx.drawerlayout.widget.DrawerLayout;
-
+import android.content.SharedPreferences;
+import android.widget.Toast;
+import android.content.Intent;
 import com.google.android.material.navigation.NavigationView;
+import com.google.android.gms.auth.api.signin.GoogleSignIn;
+import com.google.android.gms.auth.api.signin.GoogleSignInClient;
+import com.google.android.gms.auth.api.signin.GoogleSignInOptions;
+
 
 public class MainActivity extends AppCompatActivity {
 
@@ -55,7 +61,28 @@ public class MainActivity extends AppCompatActivity {
             public boolean onNavigationItemSelected(@NonNull android.view.MenuItem item) {
                 int id = item.getItemId();
                 if (id == R.id.nav_logout) {
-                    // TODO: Handle logout
+                    // Handle logout
+                    Toast.makeText(MainActivity.this, "Logging out...", Toast.LENGTH_SHORT).show();
+
+                    // Clear user session
+                    SharedPreferences prefs = getSharedPreferences("MyPrefs", MODE_PRIVATE);
+                    prefs.edit().clear().apply();
+
+                    // Google Sign Out
+                    GoogleSignInOptions gso = new GoogleSignInOptions.Builder(GoogleSignInOptions.DEFAULT_SIGN_IN)
+                            .requestEmail()
+                            .build();
+                    GoogleSignInClient mGoogleSignInClient = GoogleSignIn.getClient(MainActivity.this, gso);
+
+                    mGoogleSignInClient.signOut().addOnCompleteListener(MainActivity.this, task -> {
+                        // After sign out, go to LoginActivity
+                        Intent intent = new Intent(MainActivity.this, LoginActivity.class);
+                        intent.setFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TASK);
+                        startActivity(intent);
+                        finish();
+                    });
+
+                    return true;
                 }
                 drawerLayout.closeDrawer(GravityCompat.START);
                 return true;
