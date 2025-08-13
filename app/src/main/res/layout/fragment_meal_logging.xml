@@ -31,7 +31,7 @@
                     android:layout_height="24dp"
                     android:src="@android:drawable/ic_menu_today"
                     android:layout_marginEnd="12dp"
-                    android:tint="@color/green_primary" />
+                    app:tint="@color/green_primary" />
 
                 <TextView
                     android:id="@+id/selected_date"
@@ -48,7 +48,7 @@
                     android:layout_height="32dp"
                     android:src="@android:drawable/ic_menu_edit"
                     android:background="?attr/selectableItemBackgroundBorderless"
-                    android:tint="@color/green_primary" />
+                    app:tint="@color/green_primary" />
 
             </LinearLayout>
         </androidx.cardview.widget.CardView>
@@ -78,7 +78,7 @@
                         android:layout_width="0dp"
                         android:layout_height="wrap_content"
                         android:layout_weight="1"
-                        android:text="🌅 Breakfast"
+                        android:text="Breakfast"
                         android:textSize="18sp"
                         android:textStyle="bold"
                         android:textColor="#333333" />
@@ -127,7 +127,7 @@
                         android:layout_width="0dp"
                         android:layout_height="wrap_content"
                         android:layout_weight="1"
-                        android:text="🌞 Lunch"
+                        android:text="Lunch"
                         android:textSize="18sp"
                         android:textStyle="bold"
                         android:textColor="#333333" />
@@ -176,7 +176,7 @@
                         android:layout_width="0dp"
                         android:layout_height="wrap_content"
                         android:layout_weight="1"
-                        android:text="🌙 Dinner"
+                        android:text="Dinner"
                         android:textSize="18sp"
                         android:textStyle="bold"
                         android:textColor="#333333" />
@@ -225,7 +225,7 @@
                         android:layout_width="0dp"
                         android:layout_height="wrap_content"
                         android:layout_weight="1"
-                        android:text="🍿 Snacks"
+                        android:text="Snacks"
                         android:textSize="18sp"
                         android:textStyle="bold"
                         android:textColor="#333333" />
