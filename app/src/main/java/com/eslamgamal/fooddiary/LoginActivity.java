@@ -4,6 +4,7 @@ import android.content.Intent;
 import android.os.Bundle;
 import android.util.Log;
 import android.view.View;
+import android.widget.ImageView;
 import android.widget.LinearLayout;
 import android.widget.Toast;
 
@@ -43,7 +44,7 @@ public class LoginActivity extends AppCompatActivity {
 
         mGoogleSignInClient = GoogleSignIn.getClient(this, gso);
 
-        LinearLayout googleSignInButton = findViewById(R.id.custom_google_button);
+        ImageView googleSignInButton = findViewById(R.id.custom_google_button);
         googleSignInButton.setOnClickListener(v -> signIn());
     }
 

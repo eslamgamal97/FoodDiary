@@ -1,38 +1,34 @@
 <?xml version="1.0" encoding="utf-8"?>
-<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+<RelativeLayout xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:tools="http://schemas.android.com/tools"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:orientation="vertical"
-    android:gravity="center"
     android:background="#15AE5C"
     tools:context=".LoginActivity">
 
-    <!-- App Logo -->
+    <!-- App Logo at the top -->
     <ImageView
         android:id="@+id/app_logo"
-        android:layout_width="120dp"
-        android:layout_height="120dp"
-        android:src="@drawable/food_diary_logo"
+        android:layout_width="300dp"
+        android:layout_height="180dp"
+        android:layout_alignParentTop="true"
+        android:layout_centerHorizontal="true"
+        android:layout_marginTop="80dp"
         android:contentDescription="@string/app_name"
-        android:layout_marginBottom="40dp" />
+        android:scaleType="fitCenter"
+        android:src="@drawable/food_diary_header" />
 
-    <!-- Custom Google Sign In Button -->
-    <LinearLayout
+    <!-- Google Sign In Button centered vertically -->
+    <ImageView
         android:id="@+id/custom_google_button"
-        android:layout_width="wrap_content"
-        android:layout_height="48dp"
-        android:orientation="horizontal"
-        android:gravity="center_vertical"
-        android:paddingHorizontal="16dp"
+        android:layout_width="280dp"
+        android:layout_height="60dp"
+        android:layout_centerInParent="true"
+        android:src="@drawable/ic_google_logo"
+        android:scaleType="fitCenter"
         android:clickable="true"
-        android:focusable="true">
+        android:focusable="true"
+        android:background="?attr/selectableItemBackgroundBorderless"
+        android:contentDescription="@string/sign_in_with_google" />
 
-        <ImageView
-            android:layout_width="225dp"
-            android:layout_height="225dp"
-            android:src="@drawable/ic_google_logo"
-            android:contentDescription="@string/sign_in_with_google" />
-    </LinearLayout>
-
-</LinearLayout>
+</RelativeLayout>
