@@ -1,6 +1,7 @@
 package com.eslamgamal.fooddiary;
 
 import android.content.Context;
+import android.content.SharedPreferences;
 import android.util.Log;
 
 import com.google.api.client.googleapis.auth.oauth2.GoogleCredential;
@@ -40,10 +41,17 @@ public class GoogleSheetsManager {
     private static final JsonFactory JSON_FACTORY = GsonFactory.getDefaultInstance();
     private static final List<String> SCOPES = Collections.singletonList(SheetsScopes.SPREADSHEETS);
 
+    // SharedPreferences keys
+    private static final String PREFS_NAME = "sheets_manager_prefs";
+    private static final String KEY_SPREADSHEET_ID = "spreadsheet_id";
+
     private Sheets sheetsService;
     private Context context;
     private ExecutorService executor;
     private String spreadsheetId;
+    private boolean isInitialized = false;
+    private boolean isInitializing = false;
+    private SharedPreferences prefs;
 
     // Callback interfaces
     public interface SyncCallback {
@@ -59,66 +67,171 @@ public class GoogleSheetsManager {
     public GoogleSheetsManager(Context context) {
         this.context = context;
         this.executor = Executors.newSingleThreadExecutor();
+        this.prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE);
+
+        // Load saved spreadsheet ID
+        this.spreadsheetId = prefs.getString(KEY_SPREADSHEET_ID, null);
+
         initializeService();
     }
 
     private void initializeService() {
+        if (isInitializing || isInitialized) {
+            Log.d(TAG, "Service initialization already in progress or completed");
+            return;
+        }
+
+        Log.d(TAG, "=== STARTING GOOGLE SHEETS INITIALIZATION ===");
+        isInitializing = true;
+
         executor.execute(() -> {
             try {
+                Log.d(TAG, "Creating HTTP transport...");
                 final NetHttpTransport HTTP_TRANSPORT = GoogleNetHttpTransport.newTrustedTransport();
 
-                // Load service account credentials from assets folder
-                InputStream credentialsStream = context.getAssets().open("service-account-key.json");
+                // Check if service account file exists
+                InputStream credentialsStream = null;
+                try {
+                    credentialsStream = context.getAssets().open("service-account-key.json");
+                    Log.d(TAG, "✓ Service account file found and opened");
+                } catch (IOException e) {
+                    Log.e(TAG, "✗ CRITICAL ERROR: Service account file 'service-account-key.json' not found in assets folder!", e);
+                    Log.e(TAG, "Please make sure you have:");
+                    Log.e(TAG, "1. Downloaded the service account JSON from Google Cloud Console");
+                    Log.e(TAG, "2. Renamed it to 'service-account-key.json'");
+                    Log.e(TAG, "3. Placed it in app/src/main/assets/ folder");
+                    isInitializing = false;
+                    return;
+                }
+
+                Log.d(TAG, "Creating Google credentials...");
+                // Load service account credentials
                 GoogleCredential credential = GoogleCredential.fromStream(credentialsStream)
                         .createScoped(SCOPES);
 
+                Log.d(TAG, "Building Sheets service...");
                 sheetsService = new Sheets.Builder(HTTP_TRANSPORT, JSON_FACTORY, credential)
                         .setApplicationName(APPLICATION_NAME)
                         .build();
 
-                Log.d(TAG, "Google Sheets service initialized successfully");
+                Log.d(TAG, "✓ Google Sheets service initialized successfully!");
+                isInitialized = true;
+                isInitializing = false;
 
-                // Initialize user's spreadsheet
-                initializeUserSpreadsheet();
+                // Initialize user's spreadsheet if we don't have one
+                if (spreadsheetId == null) {
+                    Log.d(TAG, "No existing spreadsheet ID, initializing user spreadsheet...");
+                    initializeUserSpreadsheet();
+                } else {
+                    Log.d(TAG, "Using existing spreadsheet ID: " + spreadsheetId);
+                }
 
-            } catch (GeneralSecurityException | IOException e) {
-                Log.e(TAG, "Failed to initialize Google Sheets service", e);
+            } catch (GeneralSecurityException e) {
+                Log.e(TAG, "✗ SECURITY ERROR during service initialization", e);
+                Log.e(TAG, "This might be due to invalid service account credentials");
+                isInitialized = false;
+                isInitializing = false;
+            } catch (IOException e) {
+                Log.e(TAG, "✗ IO ERROR during service initialization", e);
+                Log.e(TAG, "This might be due to network issues or file access problems");
+                isInitialized = false;
+                isInitializing = false;
+            } catch (Exception e) {
+                Log.e(TAG, "✗ UNEXPECTED ERROR during service initialization", e);
+                isInitialized = false;
+                isInitializing = false;
             }
+
+            Log.d(TAG, "=== INITIALIZATION COMPLETED. isInitialized: " + isInitialized + " ===");
         });
     }
 
     private void initializeUserSpreadsheet() {
-        FirebaseUser user = FirebaseAuth.getInstance().getCurrentUser();
-        if (user == null) return;
+        Log.d(TAG, "=== STARTING USER SPREADSHEET INITIALIZATION ===");
 
+        // Wait a bit for Firebase user to be fully loaded
+        new android.os.Handler(android.os.Looper.getMainLooper()).postDelayed(() -> {
+            FirebaseUser user = FirebaseAuth.getInstance().getCurrentUser();
+            if (user == null) {
+                Log.w(TAG, "No Firebase user available for spreadsheet initialization, retrying in 3 seconds...");
+                // Retry after another delay (max 3 retries)
+                new android.os.Handler(android.os.Looper.getMainLooper()).postDelayed(() -> {
+                    FirebaseUser retryUser = FirebaseAuth.getInstance().getCurrentUser();
+                    if (retryUser == null) {
+                        Log.e(TAG, "✗ CRITICAL: Still no Firebase user after retry. Cannot create spreadsheet!");
+                        Log.e(TAG, "Please make sure user is logged in before trying to sync.");
+                        return;
+                    }
+                    Log.d(TAG, "✓ Firebase user found on retry: " + retryUser.getEmail());
+                    createUserSpreadsheetWithUser(retryUser);
+                }, 3000);
+                return;
+            }
+
+            Log.d(TAG, "✓ Firebase user found: " + user.getEmail());
+            createUserSpreadsheetWithUser(user);
+        }, 2000); // Wait 2 seconds for Firebase user to be ready
+    }
+
+    private void createUserSpreadsheetWithUser(FirebaseUser user) {
         String userEmail = user.getEmail();
+        if (userEmail == null) {
+            userEmail = user.getUid(); // Fallback to UID if email is null
+            Log.d(TAG, "Using UID as fallback: " + userEmail);
+        }
+
         String spreadsheetTitle = "Food Diary - " + userEmail;
+        Log.d(TAG, "Creating spreadsheet with title: " + spreadsheetTitle);
 
         executor.execute(() -> {
             try {
-                // Check if spreadsheet already exists (you might want to store this in SharedPreferences)
-                // For now, we'll create a new one each time or find existing one
-                spreadsheetId = getOrCreateUserSpreadsheet(spreadsheetTitle);
-                Log.d(TAG, "User spreadsheet ID: " + spreadsheetId);
+                if (!isInitialized) {
+                    Log.e(TAG, "✗ Cannot create spreadsheet: Sheets service not initialized!");
+                    return;
+                }
+
+                Log.d(TAG, "Creating new spreadsheet...");
+                String newSpreadsheetId = createUserSpreadsheet(spreadsheetTitle);
+                this.spreadsheetId = newSpreadsheetId;
+
+                // Save spreadsheet ID for future use
+                prefs.edit().putString(KEY_SPREADSHEET_ID, spreadsheetId).apply();
+
+                Log.d(TAG, "✓ User spreadsheet created successfully!");
+                Log.d(TAG, "✓ Spreadsheet ID: " + spreadsheetId);
+                Log.d(TAG, "✓ Spreadsheet URL: https://docs.google.com/spreadsheets/d/" + spreadsheetId);
+                Log.d(TAG, "=== USER SPREADSHEET INITIALIZATION COMPLETED ===");
 
             } catch (IOException e) {
-                Log.e(TAG, "Failed to initialize user spreadsheet", e);
+                Log.e(TAG, "✗ Failed to create user spreadsheet", e);
+                if (e.getMessage().contains("PERMISSION_DENIED") || e.getMessage().contains("403")) {
+                    Log.e(TAG, "PERMISSION ERROR: Check your service account permissions!");
+                    Log.e(TAG, "Make sure the service account has access to Google Sheets API");
+                } else if (e.getMessage().contains("UNAUTHENTICATED") || e.getMessage().contains("401")) {
+                    Log.e(TAG, "AUTHENTICATION ERROR: Check your service account credentials!");
+                }
+            } catch (Exception e) {
+                Log.e(TAG, "✗ Unexpected error creating spreadsheet", e);
             }
         });
     }
 
-    private String getOrCreateUserSpreadsheet(String title) throws IOException {
+    private String createUserSpreadsheet(String title) throws IOException {
+        if (!isInitialized) {
+            throw new IOException("Sheets service not initialized");
+        }
+
         // Create a new spreadsheet
         Spreadsheet spreadsheet = new Spreadsheet()
                 .setProperties(new SpreadsheetProperties().setTitle(title));
 
         spreadsheet = sheetsService.spreadsheets().create(spreadsheet).execute();
-        String spreadsheetId = spreadsheet.getSpreadsheetId();
+        String newSpreadsheetId = spreadsheet.getSpreadsheetId();
 
         // Set up headers
-        setupSpreadsheetHeaders(spreadsheetId);
+        setupSpreadsheetHeaders(newSpreadsheetId);
 
-        return spreadsheetId;
+        return newSpreadsheetId;
     }
 
     private void setupSpreadsheetHeaders(String spreadsheetId) throws IOException {
@@ -137,8 +250,7 @@ public class GoogleSheetsManager {
     }
 
     public void syncMealToSheets(Meal meal, SyncCallback callback) {
-        if (sheetsService == null || spreadsheetId == null) {
-            callback.onError("Sheets service not initialized");
+        if (!checkInitialization(callback)) {
             return;
         }
 
@@ -173,8 +285,7 @@ public class GoogleSheetsManager {
     }
 
     public void syncMultipleMealsToSheets(List<Meal> meals, SyncCallback callback) {
-        if (sheetsService == null || spreadsheetId == null) {
-            callback.onError("Sheets service not initialized");
+        if (!checkInitialization(callback)) {
             return;
         }
 
@@ -211,8 +322,7 @@ public class GoogleSheetsManager {
     }
 
     public void loadMealsFromSheets(LoadCallback callback) {
-        if (sheetsService == null || spreadsheetId == null) {
-            callback.onError("Sheets service not initialized");
+        if (!checkInitialization(callback)) {
             return;
         }
 
@@ -272,8 +382,7 @@ public class GoogleSheetsManager {
     }
 
     public void deleteMealFromSheets(Meal mealToDelete, SyncCallback callback) {
-        if (sheetsService == null || spreadsheetId == null) {
-            callback.onError("Sheets service not initialized");
+        if (!checkInitialization(callback)) {
             return;
         }
 
@@ -336,8 +445,7 @@ public class GoogleSheetsManager {
     }
 
     public void clearAllData(SyncCallback callback) {
-        if (sheetsService == null || spreadsheetId == null) {
-            callback.onError("Sheets service not initialized");
+        if (!checkInitialization(callback)) {
             return;
         }
 
@@ -358,11 +466,81 @@ public class GoogleSheetsManager {
         });
     }
 
+    // Helper method to check if service is initialized
+    private boolean checkInitialization(SyncCallback callback) {
+        if (!isInitialized) {
+            String error = "Sheets service not initialized";
+            if (callback != null) {
+                callback.onError(error);
+            }
+            return false;
+        }
+
+        if (spreadsheetId == null) {
+            String error = "Spreadsheet not ready";
+            if (callback != null) {
+                callback.onError(error);
+            }
+            return false;
+        }
+
+        return true;
+    }
+
+    // Helper method for LoadCallback
+    private boolean checkInitialization(LoadCallback callback) {
+        if (!isInitialized) {
+            String error = "Sheets service not initialized";
+            if (callback != null) {
+                callback.onError(error);
+            }
+            return false;
+        }
+
+        if (spreadsheetId == null) {
+            String error = "Spreadsheet not ready";
+            if (callback != null) {
+                callback.onError(error);
+            }
+            return false;
+        }
+
+        return true;
+    }
+
     public String getSpreadsheetUrl() {
         if (spreadsheetId != null) {
             return "https://docs.google.com/spreadsheets/d/" + spreadsheetId;
         }
         return null;
+    }
+
+    public boolean isReady() {
+        boolean ready = isInitialized && spreadsheetId != null;
+        Log.d(TAG, "isReady() check: initialized=" + isInitialized + ", spreadsheetId=" + (spreadsheetId != null ? "exists" : "null") + ", result=" + ready);
+        return ready;
+    }
+
+    public String getDetailedStatus() {
+        StringBuilder status = new StringBuilder();
+        status.append("=== GOOGLE SHEETS SERVICE STATUS ===\n");
+        status.append("Service Initialized: ").append(isInitialized ? "✓ YES" : "✗ NO").append("\n");
+        status.append("Is Initializing: ").append(isInitializing ? "YES" : "NO").append("\n");
+        status.append("Spreadsheet ID: ").append(spreadsheetId != null ? "✓ EXISTS" : "✗ NULL").append("\n");
+        status.append("Service Ready: ").append(isReady() ? "✓ READY" : "✗ NOT READY").append("\n");
+
+        FirebaseUser user = FirebaseAuth.getInstance().getCurrentUser();
+        status.append("Firebase User: ").append(user != null ? "✓ LOGGED IN (" + user.getEmail() + ")" : "✗ NOT LOGGED IN").append("\n");
+        status.append("====================================");
+        return status.toString();
+    }
+
+    public void forceReinitialize() {
+        isInitialized = false;
+        isInitializing = false;
+        spreadsheetId = null;
+        prefs.edit().remove(KEY_SPREADSHEET_ID).apply();
+        initializeService();
     }
 
     public void shutdown() {
