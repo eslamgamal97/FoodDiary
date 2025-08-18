@@ -4,34 +4,30 @@ import android.content.Context;
 import android.content.SharedPreferences;
 import android.util.Log;
 
-import com.google.api.client.googleapis.auth.oauth2.GoogleCredential;
-import com.google.api.client.googleapis.javanet.GoogleNetHttpTransport;
-import com.google.api.client.http.javanet.NetHttpTransport;
+import com.google.android.gms.auth.api.signin.GoogleSignIn;
+import com.google.android.gms.auth.api.signin.GoogleSignInAccount;
+import com.google.api.client.extensions.android.http.AndroidHttp;
+import com.google.api.client.googleapis.extensions.android.gms.auth.GoogleAccountCredential;
+import com.google.api.client.http.HttpTransport;
 import com.google.api.client.json.JsonFactory;
 import com.google.api.client.json.gson.GsonFactory;
 import com.google.api.services.sheets.v4.Sheets;
 import com.google.api.services.sheets.v4.SheetsScopes;
 import com.google.api.services.sheets.v4.model.AppendValuesResponse;
-import com.google.api.services.sheets.v4.model.BatchGetValuesResponse;
 import com.google.api.services.sheets.v4.model.BatchUpdateSpreadsheetRequest;
 import com.google.api.services.sheets.v4.model.ClearValuesRequest;
 import com.google.api.services.sheets.v4.model.Request;
 import com.google.api.services.sheets.v4.model.Spreadsheet;
 import com.google.api.services.sheets.v4.model.SpreadsheetProperties;
 import com.google.api.services.sheets.v4.model.ValueRange;
-import com.google.firebase.auth.FirebaseAuth;
-import com.google.firebase.auth.FirebaseUser;
+import com.google.api.services.sheets.v4.model.DeleteDimensionRequest;
+import com.google.api.services.sheets.v4.model.DimensionRange;
 
 import java.io.IOException;
-import java.io.InputStream;
-import java.security.GeneralSecurityException;
-import java.text.SimpleDateFormat;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
-import java.util.Date;
 import java.util.List;
-import java.util.Locale;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
@@ -54,6 +50,14 @@ public class GoogleSheetsManager {
     private SharedPreferences prefs;
 
     // Callback interfaces
+    public interface InitializationCallback {
+        void onInitializationComplete(boolean success, String message);
+    }
+    private InitializationCallback initCallback;
+
+    public void setInitializationCallback(InitializationCallback callback) {
+        this.initCallback = callback;
+    }
     public interface SyncCallback {
         void onSuccess(String message);
         void onError(String error);
@@ -86,31 +90,26 @@ public class GoogleSheetsManager {
 
         executor.execute(() -> {
             try {
-                Log.d(TAG, "Creating HTTP transport...");
-                final NetHttpTransport HTTP_TRANSPORT = GoogleNetHttpTransport.newTrustedTransport();
+                // Get the signed-in Google account
+                GoogleSignInAccount account = GoogleSignIn.getLastSignedInAccount(context);
 
-                // Check if service account file exists
-                InputStream credentialsStream = null;
-                try {
-                    credentialsStream = context.getAssets().open("service-account-key.json");
-                    Log.d(TAG, "✓ Service account file found and opened");
-                } catch (IOException e) {
-                    Log.e(TAG, "✗ CRITICAL ERROR: Service account file 'service-account-key.json' not found in assets folder!", e);
-                    Log.e(TAG, "Please make sure you have:");
-                    Log.e(TAG, "1. Downloaded the service account JSON from Google Cloud Console");
-                    Log.e(TAG, "2. Renamed it to 'service-account-key.json'");
-                    Log.e(TAG, "3. Placed it in app/src/main/assets/ folder");
+                if (account == null) {
+                    Log.e(TAG, "No signed-in Google account found");
                     isInitializing = false;
                     return;
                 }
 
-                Log.d(TAG, "Creating Google credentials...");
-                // Load service account credentials
-                GoogleCredential credential = GoogleCredential.fromStream(credentialsStream)
-                        .createScoped(SCOPES);
+                Log.d(TAG, "Using Google account: " + account.getEmail());
+
+                // Create credential using GoogleAccountCredential (modern approach)
+                GoogleAccountCredential credential = GoogleAccountCredential.usingOAuth2(
+                        context, SCOPES);
+                credential.setSelectedAccount(account.getAccount());
+
+                HttpTransport transport = AndroidHttp.newCompatibleTransport();
 
                 Log.d(TAG, "Building Sheets service...");
-                sheetsService = new Sheets.Builder(HTTP_TRANSPORT, JSON_FACTORY, credential)
+                sheetsService = new Sheets.Builder(transport, JSON_FACTORY, credential)
                         .setApplicationName(APPLICATION_NAME)
                         .build();
 
@@ -120,24 +119,14 @@ public class GoogleSheetsManager {
 
                 // Initialize user's spreadsheet if we don't have one
                 if (spreadsheetId == null) {
-                    Log.d(TAG, "No existing spreadsheet ID, initializing user spreadsheet...");
-                    initializeUserSpreadsheet();
+                    Log.d(TAG, "No existing spreadsheet ID, creating new spreadsheet...");
+                    initializeUserSpreadsheet(account);
                 } else {
                     Log.d(TAG, "Using existing spreadsheet ID: " + spreadsheetId);
                 }
 
-            } catch (GeneralSecurityException e) {
-                Log.e(TAG, "✗ SECURITY ERROR during service initialization", e);
-                Log.e(TAG, "This might be due to invalid service account credentials");
-                isInitialized = false;
-                isInitializing = false;
-            } catch (IOException e) {
-                Log.e(TAG, "✗ IO ERROR during service initialization", e);
-                Log.e(TAG, "This might be due to network issues or file access problems");
-                isInitialized = false;
-                isInitializing = false;
             } catch (Exception e) {
-                Log.e(TAG, "✗ UNEXPECTED ERROR during service initialization", e);
+                Log.e(TAG, "✗ ERROR during service initialization", e);
                 isInitialized = false;
                 isInitializing = false;
             }
@@ -146,42 +135,12 @@ public class GoogleSheetsManager {
         });
     }
 
-    private void initializeUserSpreadsheet() {
-        Log.d(TAG, "=== STARTING USER SPREADSHEET INITIALIZATION ===");
-
-        // Wait a bit for Firebase user to be fully loaded
-        new android.os.Handler(android.os.Looper.getMainLooper()).postDelayed(() -> {
-            FirebaseUser user = FirebaseAuth.getInstance().getCurrentUser();
-            if (user == null) {
-                Log.w(TAG, "No Firebase user available for spreadsheet initialization, retrying in 3 seconds...");
-                // Retry after another delay (max 3 retries)
-                new android.os.Handler(android.os.Looper.getMainLooper()).postDelayed(() -> {
-                    FirebaseUser retryUser = FirebaseAuth.getInstance().getCurrentUser();
-                    if (retryUser == null) {
-                        Log.e(TAG, "✗ CRITICAL: Still no Firebase user after retry. Cannot create spreadsheet!");
-                        Log.e(TAG, "Please make sure user is logged in before trying to sync.");
-                        return;
-                    }
-                    Log.d(TAG, "✓ Firebase user found on retry: " + retryUser.getEmail());
-                    createUserSpreadsheetWithUser(retryUser);
-                }, 3000);
-                return;
-            }
-
-            Log.d(TAG, "✓ Firebase user found: " + user.getEmail());
-            createUserSpreadsheetWithUser(user);
-        }, 2000); // Wait 2 seconds for Firebase user to be ready
-    }
-
-    private void createUserSpreadsheetWithUser(FirebaseUser user) {
-        String userEmail = user.getEmail();
+    private void initializeUserSpreadsheet(GoogleSignInAccount account) {
+        String userEmail = account.getEmail();
         if (userEmail == null) {
-            userEmail = user.getUid(); // Fallback to UID if email is null
-            Log.d(TAG, "Using UID as fallback: " + userEmail);
+            userEmail = "User";
         }
-
         String spreadsheetTitle = "Food Diary - " + userEmail;
-        Log.d(TAG, "Creating spreadsheet with title: " + spreadsheetTitle);
 
         executor.execute(() -> {
             try {
@@ -190,7 +149,7 @@ public class GoogleSheetsManager {
                     return;
                 }
 
-                Log.d(TAG, "Creating new spreadsheet...");
+                Log.d(TAG, "Creating new spreadsheet: " + spreadsheetTitle);
                 String newSpreadsheetId = createUserSpreadsheet(spreadsheetTitle);
                 this.spreadsheetId = newSpreadsheetId;
 
@@ -200,16 +159,10 @@ public class GoogleSheetsManager {
                 Log.d(TAG, "✓ User spreadsheet created successfully!");
                 Log.d(TAG, "✓ Spreadsheet ID: " + spreadsheetId);
                 Log.d(TAG, "✓ Spreadsheet URL: https://docs.google.com/spreadsheets/d/" + spreadsheetId);
-                Log.d(TAG, "=== USER SPREADSHEET INITIALIZATION COMPLETED ===");
 
             } catch (IOException e) {
                 Log.e(TAG, "✗ Failed to create user spreadsheet", e);
-                if (e.getMessage().contains("PERMISSION_DENIED") || e.getMessage().contains("403")) {
-                    Log.e(TAG, "PERMISSION ERROR: Check your service account permissions!");
-                    Log.e(TAG, "Make sure the service account has access to Google Sheets API");
-                } else if (e.getMessage().contains("UNAUTHENTICATED") || e.getMessage().contains("401")) {
-                    Log.e(TAG, "AUTHENTICATION ERROR: Check your service account credentials!");
-                }
+                Log.e(TAG, "Error details: " + e.getMessage());
             } catch (Exception e) {
                 Log.e(TAG, "✗ Unexpected error creating spreadsheet", e);
             }
@@ -262,7 +215,7 @@ public class GoogleSheetsManager {
                                 meal.getCategory(),
                                 meal.getName(),
                                 meal.getFormattedTime(),
-                                meal.getTimestamp().getTime() // Store timestamp as long for sorting
+                                meal.getTimestamp().getTime()
                         )
                 );
 
@@ -280,6 +233,9 @@ public class GoogleSheetsManager {
             } catch (IOException e) {
                 Log.e(TAG, "Failed to sync meal to sheets", e);
                 callback.onError("Failed to sync meal: " + e.getMessage());
+            } catch (Exception e) {
+                Log.e(TAG, "Unexpected error syncing meal", e);
+                callback.onError("Unexpected error: " + e.getMessage());
             }
         });
     }
@@ -344,7 +300,7 @@ public class GoogleSheetsManager {
                             String timeStr = row.get(3).toString();
                             long timestamp = Long.parseLong(row.get(4).toString());
 
-                            Date mealTimestamp = new Date(timestamp);
+                            java.util.Date mealTimestamp = new java.util.Date(timestamp);
                             Meal meal = new Meal(name, category, mealTimestamp, date);
                             meals.add(meal);
                         }
@@ -419,8 +375,8 @@ public class GoogleSheetsManager {
                     // Delete the row
                     List<Request> requests = new ArrayList<>();
                     requests.add(new Request()
-                            .setDeleteDimension(new com.google.api.services.sheets.v4.model.DeleteDimensionRequest()
-                                    .setRange(new com.google.api.services.sheets.v4.model.DimensionRange()
+                            .setDeleteDimension(new DeleteDimensionRequest()
+                                    .setRange(new DimensionRange()
                                             .setSheetId(0) // Assuming first sheet
                                             .setDimension("ROWS")
                                             .setStartIndex(rowToDelete - 1) // 0-indexed for API
@@ -470,6 +426,7 @@ public class GoogleSheetsManager {
     private boolean checkInitialization(SyncCallback callback) {
         if (!isInitialized) {
             String error = "Sheets service not initialized";
+            Log.w(TAG, error);
             if (callback != null) {
                 callback.onError(error);
             }
@@ -478,6 +435,7 @@ public class GoogleSheetsManager {
 
         if (spreadsheetId == null) {
             String error = "Spreadsheet not ready";
+            Log.w(TAG, error);
             if (callback != null) {
                 callback.onError(error);
             }
@@ -491,6 +449,7 @@ public class GoogleSheetsManager {
     private boolean checkInitialization(LoadCallback callback) {
         if (!isInitialized) {
             String error = "Sheets service not initialized";
+            Log.w(TAG, error);
             if (callback != null) {
                 callback.onError(error);
             }
@@ -499,6 +458,7 @@ public class GoogleSheetsManager {
 
         if (spreadsheetId == null) {
             String error = "Spreadsheet not ready";
+            Log.w(TAG, error);
             if (callback != null) {
                 callback.onError(error);
             }
@@ -529,8 +489,8 @@ public class GoogleSheetsManager {
         status.append("Spreadsheet ID: ").append(spreadsheetId != null ? "✓ EXISTS" : "✗ NULL").append("\n");
         status.append("Service Ready: ").append(isReady() ? "✓ READY" : "✗ NOT READY").append("\n");
 
-        FirebaseUser user = FirebaseAuth.getInstance().getCurrentUser();
-        status.append("Firebase User: ").append(user != null ? "✓ LOGGED IN (" + user.getEmail() + ")" : "✗ NOT LOGGED IN").append("\n");
+        GoogleSignInAccount account = GoogleSignIn.getLastSignedInAccount(context);
+        status.append("Google Sign-In Account: ").append(account != null ? "✓ SIGNED IN (" + account.getEmail() + ")" : "✗ NOT SIGNED IN").append("\n");
         status.append("====================================");
         return status.toString();
     }

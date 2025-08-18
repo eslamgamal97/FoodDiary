@@ -26,6 +26,21 @@ public class MealSyncManager {
     private Handler mainHandler;
 
     // Callbacks
+    public interface InitializationCallback {
+        void onInitializationComplete(boolean success, String message);
+    }
+
+    // Add this field
+    private InitializationCallback initCallback;
+
+    // Add this method
+    public void setInitializationCallback(InitializationCallback callback) {
+        this.initCallback = callback;
+        // Forward the callback to GoogleSheetsManager
+        if (sheetsManager != null) {
+            sheetsManager.setInitializationCallback((GoogleSheetsManager.InitializationCallback) callback);
+        }
+    }
     public interface SyncStatusListener {
         void onSyncStarted();
         void onSyncCompleted(boolean success, String message);
