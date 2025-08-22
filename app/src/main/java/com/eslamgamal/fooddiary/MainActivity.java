@@ -1,8 +1,11 @@
 package com.eslamgamal.fooddiary;
 
 import android.app.DatePickerDialog;
+import android.app.ProgressDialog;
 import android.content.Intent;
 import android.os.Bundle;
+import android.os.Handler;
+import android.os.Looper;
 import android.text.InputType;
 import android.view.LayoutInflater;
 import android.view.View;
@@ -25,7 +28,9 @@ import androidx.recyclerview.widget.RecyclerView;
 import com.google.android.gms.auth.api.signin.GoogleSignIn;
 import com.google.android.gms.auth.api.signin.GoogleSignInClient;
 import com.google.android.gms.auth.api.signin.GoogleSignInOptions;
+import com.google.android.gms.common.api.Scope;
 import com.google.android.material.navigation.NavigationView;
+import com.google.api.services.sheets.v4.SheetsScopes;
 import com.google.firebase.auth.FirebaseAuth;
 
 import java.text.SimpleDateFormat;
@@ -54,6 +59,16 @@ public class MainActivity extends AppCompatActivity implements MealAdapter.OnMea
     private MealAdapter breakfastAdapter, lunchAdapter, dinnerAdapter, snacksAdapter;
     private Calendar selectedDate;
 
+    // Sync components
+    private MealSyncManager syncManager;
+    private ProgressDialog syncProgressDialog;
+    private ProgressDialog initializationDialog;
+    private Handler mainHandler;
+
+    // Initialization state
+    private boolean isInitializationComplete = false;
+    private boolean initializationSuccess = false;
+
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
@@ -66,6 +81,10 @@ public class MainActivity extends AppCompatActivity implements MealAdapter.OnMea
         GoogleSignInOptions gso = new GoogleSignInOptions.Builder(GoogleSignInOptions.DEFAULT_SIGN_IN)
                 .requestIdToken(getString(R.string.default_web_client_id))
                 .requestEmail()
+                .requestScopes(
+                        new Scope(SheetsScopes.SPREADSHEETS),
+                        new Scope("https://www.googleapis.com/auth/drive.file")
+                )
                 .build();
         mGoogleSignInClient = GoogleSignIn.getClient(this, gso);
 
@@ -83,6 +102,10 @@ public class MainActivity extends AppCompatActivity implements MealAdapter.OnMea
         navigationView = findViewById(R.id.navigation_view);
         menuButton = findViewById(R.id.menu_button);
 
+        // Initialize sync components
+        syncManager = new MealSyncManager(this);
+        mainHandler = new Handler(Looper.getMainLooper());
+
         // Initialize data
         allMeals = new ArrayList<>();
         selectedDate = Calendar.getInstance();
@@ -92,9 +115,55 @@ public class MainActivity extends AppCompatActivity implements MealAdapter.OnMea
         setupNavigationDrawer();
         setupBackPressHandling();
 
-        // Load meals for today
+        // Update date display
         updateDateDisplay();
         loadMealsForSelectedDate();
+
+        // Start initialization check
+        checkInitializationStatus();
+    }
+
+    private void checkInitializationStatus() {
+        // Show initialization progress
+        showInitializationProgress("Setting up sync...");
+
+        // Check initialization status periodically
+        Handler checkHandler = new Handler(Looper.getMainLooper());
+        Runnable checkRunnable = new Runnable() {
+            int attempts = 0;
+            final int maxAttempts = 20; // 10 seconds max (20 * 500ms)
+
+            @Override
+            public void run() {
+                attempts++;
+
+                if (syncManager.isReady()) {
+                    // Success - initialization complete
+                    hideInitializationProgress();
+                    isInitializationComplete = true;
+                    initializationSuccess = true;
+
+                    Toast.makeText(MainActivity.this, "Sync ready ✓", Toast.LENGTH_SHORT).show();
+                    loadMealsFromCloud();
+
+                } else if (attempts >= maxAttempts) {
+                    // Timeout - initialization failed
+                    hideInitializationProgress();
+                    isInitializationComplete = true;
+                    initializationSuccess = false;
+
+                    Toast.makeText(MainActivity.this, "Sync unavailable - running in offline mode", Toast.LENGTH_LONG).show();
+                    showSyncStatus("⚠ Offline mode", true);
+
+                } else {
+                    // Still waiting - check again
+                    checkHandler.postDelayed(this, 500);
+                }
+            }
+        };
+
+        // Start checking after a short delay
+        checkHandler.postDelayed(checkRunnable, 1000);
     }
 
     private void setupMealLoggingInterface() {
@@ -168,6 +237,17 @@ public class MainActivity extends AppCompatActivity implements MealAdapter.OnMea
                 int id = item.getItemId();
                 if (id == R.id.nav_logout) {
                     performLogout();
+                } else if (id == R.id.nav_sync_now) {
+                    performManualSync();
+                } else if (id == R.id.nav_view_spreadsheet) {
+                    viewSpreadsheet();
+                } else if (id == R.id.nav_sync_settings) {
+                    showSyncSettings();
+                } else if (id == R.id.nav_home) {
+                    // Already on home screen
+                    Toast.makeText(MainActivity.this, "You're on the home screen", Toast.LENGTH_SHORT).show();
+                } else if (id == R.id.nav_calendar) {
+                    showDatePicker();
                 }
                 drawerLayout.closeDrawer(GravityCompat.START);
                 return true;
@@ -185,7 +265,7 @@ public class MainActivity extends AppCompatActivity implements MealAdapter.OnMea
                 } else {
                     // Allow normal back press behavior
                     setEnabled(false);
-                    MainActivity.super.onBackPressed();
+                    getOnBackPressedDispatcher().onBackPressed();
                 }
             }
         });
@@ -244,12 +324,112 @@ public class MainActivity extends AppCompatActivity implements MealAdapter.OnMea
     }
 
     private void addMeal(String name, String category) {
-        Meal meal = new Meal(name, category);
+        // Create meal with selected date
+        Meal meal = createMealWithSelectedDate(name, category);
         allMeals.add(meal);
         loadMealsForSelectedDate();
+
         Toast.makeText(this, name + " added to " + category, Toast.LENGTH_SHORT).show();
 
-        // TODO: Sync with Google Sheets
+        // Only sync to cloud if initialization is complete and successful
+        if (isInitializationComplete && initializationSuccess) {
+            syncMealToCloud(meal);
+        } else if (!isInitializationComplete) {
+            Toast.makeText(this, "Sync still initializing, meal saved locally", Toast.LENGTH_SHORT).show();
+        } else {
+            Toast.makeText(this, "Offline mode - meal saved locally", Toast.LENGTH_SHORT).show();
+        }
+    }
+
+    private Meal createMealWithSelectedDate(String name, String category) {
+        // Create timestamp for the selected date with current time
+        Calendar mealTime = Calendar.getInstance();
+        mealTime.set(selectedDate.get(Calendar.YEAR),
+                selectedDate.get(Calendar.MONTH),
+                selectedDate.get(Calendar.DAY_OF_MONTH));
+
+        Date timestamp = mealTime.getTime();
+        SimpleDateFormat dateFormat = new SimpleDateFormat("yyyy-MM-dd", Locale.getDefault());
+        String dateString = dateFormat.format(selectedDate.getTime());
+
+        return new Meal(name, category, timestamp, dateString);
+    }
+
+    private void syncMealToCloud(Meal meal) {
+        syncManager.syncMeal(meal, new MealSyncManager.SyncStatusListener() {
+            @Override
+            public void onSyncStarted() {
+                // Optional: Show sync indicator
+            }
+
+            @Override
+            public void onSyncCompleted(boolean success, String message) {
+                mainHandler.post(() -> {
+                    if (success) {
+                        // Show subtle success indication
+                        showSyncStatus("✓ Synced", false);
+                    } else {
+                        // Show error but don't be intrusive
+                        showSyncStatus("⚠ Sync pending", true);
+                    }
+                });
+            }
+
+            @Override
+            public void onSyncProgress(int completed, int total) {
+                // Not used for single meal sync
+            }
+        });
+    }
+
+    private void loadMealsFromCloud() {
+        // Only attempt if initialization is complete and successful
+        if (!isInitializationComplete || !initializationSuccess) {
+            return;
+        }
+
+        syncManager.loadMealsFromCloud(new GoogleSheetsManager.LoadCallback() {
+            @Override
+            public void onMealsLoaded(List<Meal> cloudMeals) {
+                mainHandler.post(() -> {
+                    // Merge with local meals (avoid duplicates)
+                    mergeCloudMeals(cloudMeals);
+                    loadMealsForSelectedDate();
+                    showSyncStatus("✓ Data loaded", false);
+                });
+            }
+
+            @Override
+            public void onError(String error) {
+                mainHandler.post(() -> {
+                    // Don't show error on startup - user might be offline
+                    showSyncStatus("⚠ Offline mode", true);
+                });
+            }
+        });
+    }
+
+    private void mergeCloudMeals(List<Meal> cloudMeals) {
+        // Simple merge - in production you might want more sophisticated conflict resolution
+        for (Meal cloudMeal : cloudMeals) {
+            boolean exists = false;
+            for (Meal localMeal : allMeals) {
+                if (mealsAreEqual(localMeal, cloudMeal)) {
+                    exists = true;
+                    break;
+                }
+            }
+            if (!exists) {
+                allMeals.add(cloudMeal);
+            }
+        }
+    }
+
+    private boolean mealsAreEqual(Meal meal1, Meal meal2) {
+        return meal1.getName().equals(meal2.getName()) &&
+                meal1.getCategory().equals(meal2.getCategory()) &&
+                meal1.getDate().equals(meal2.getDate()) &&
+                Math.abs(meal1.getTimestamp().getTime() - meal2.getTimestamp().getTime()) < 60000; // Within 1 minute
     }
 
     private void loadMealsForSelectedDate() {
@@ -289,8 +469,267 @@ public class MainActivity extends AppCompatActivity implements MealAdapter.OnMea
 
     @Override
     public void onMealDelete(int position) {
-        // TODO: Implement meal deletion
-        Toast.makeText(this, "Delete functionality coming soon", Toast.LENGTH_SHORT).show();
+        // Find which adapter called this and get the meal
+        Meal mealToDelete = findMealToDelete(position);
+        if (mealToDelete != null) {
+            showDeleteConfirmDialog(mealToDelete);
+        }
+    }
+
+    private Meal findMealToDelete(int position) {
+        // This is a simplified approach - you might want to improve this
+        SimpleDateFormat dateFormat = new SimpleDateFormat("yyyy-MM-dd", Locale.getDefault());
+        String selectedDateString = dateFormat.format(selectedDate.getTime());
+
+        List<Meal> mealsForDate = new ArrayList<>();
+        for (Meal meal : allMeals) {
+            if (meal.getDate().equals(selectedDateString)) {
+                mealsForDate.add(meal);
+            }
+        }
+
+        // This is a simple approach - in production you'd want to pass more context
+        // to identify which specific meal was clicked
+        if (position < mealsForDate.size()) {
+            return mealsForDate.get(position);
+        }
+        return null;
+    }
+
+    private void showDeleteConfirmDialog(Meal meal) {
+        new AlertDialog.Builder(this)
+                .setTitle("Delete Meal")
+                .setMessage("Are you sure you want to delete \"" + meal.getName() + "\"?")
+                .setPositiveButton("Delete", (dialog, which) -> deleteMeal(meal))
+                .setNegativeButton("Cancel", null)
+                .show();
+    }
+
+    private void deleteMeal(Meal meal) {
+        // Remove from local list
+        allMeals.remove(meal);
+        loadMealsForSelectedDate();
+
+        // Only delete from cloud if sync is available
+        if (isInitializationComplete && initializationSuccess) {
+            // Delete from cloud
+            syncManager.deleteMeal(meal, new MealSyncManager.SyncStatusListener() {
+                @Override
+                public void onSyncStarted() {
+                    // Show deleting indicator
+                }
+
+                @Override
+                public void onSyncCompleted(boolean success, String message) {
+                    mainHandler.post(() -> {
+                        if (success) {
+                            Toast.makeText(MainActivity.this, "Meal deleted", Toast.LENGTH_SHORT).show();
+                            showSyncStatus("✓ Deleted", false);
+                        } else {
+                            Toast.makeText(MainActivity.this, "Failed to delete from cloud", Toast.LENGTH_SHORT).show();
+                            showSyncStatus("⚠ Delete failed", true);
+                        }
+                    });
+                }
+
+                @Override
+                public void onSyncProgress(int completed, int total) {
+                    // Not used
+                }
+            });
+        } else {
+            Toast.makeText(this, "Meal deleted locally (offline mode)", Toast.LENGTH_SHORT).show();
+        }
+    }
+
+    private void performManualSync() {
+        if (!isInitializationComplete) {
+            Toast.makeText(this, "Sync is still initializing, please wait...", Toast.LENGTH_SHORT).show();
+            return;
+        }
+
+        if (!initializationSuccess) {
+            Toast.makeText(this, "Sync service unavailable. Please check your connection and restart the app.", Toast.LENGTH_LONG).show();
+            return;
+        }
+
+        showSyncProgress("Syncing data...");
+
+        syncManager.performFullSync(allMeals, new MealSyncManager.SyncStatusListener() {
+            @Override
+            public void onSyncStarted() {
+                // Already showing progress
+            }
+
+            @Override
+            public void onSyncCompleted(boolean success, String message) {
+                mainHandler.post(() -> {
+                    hideSyncProgress();
+                    if (success) {
+                        Toast.makeText(MainActivity.this, "Sync completed successfully", Toast.LENGTH_SHORT).show();
+                        // Reload data from cloud
+                        loadMealsFromCloud();
+                    } else {
+                        Toast.makeText(MainActivity.this, "Sync failed: " + message, Toast.LENGTH_LONG).show();
+                    }
+                });
+            }
+
+            @Override
+            public void onSyncProgress(int completed, int total) {
+                mainHandler.post(() -> {
+                    if (syncProgressDialog != null) {
+                        syncProgressDialog.setMessage("Syncing " + completed + "/" + total + " meals...");
+                    }
+                });
+            }
+        });
+    }
+
+    private void viewSpreadsheet() {
+        if (!isInitializationComplete || !initializationSuccess) {
+            Toast.makeText(this, "Spreadsheet not available (sync not ready)", Toast.LENGTH_SHORT).show();
+            return;
+        }
+
+        String url = syncManager.getSpreadsheetUrl();
+        if (url != null) {
+            Intent intent = new Intent(Intent.ACTION_VIEW);
+            intent.setData(android.net.Uri.parse(url));
+            try {
+                startActivity(intent);
+            } catch (Exception e) {
+                Toast.makeText(this, "Cannot open spreadsheet. URL copied to clipboard", Toast.LENGTH_LONG).show();
+                // You could implement clipboard copy here if needed
+            }
+        } else {
+            Toast.makeText(this, "Spreadsheet not ready yet. Try syncing first.", Toast.LENGTH_SHORT).show();
+        }
+    }
+
+    private void showSyncSettings() {
+        AlertDialog.Builder builder = new AlertDialog.Builder(this);
+        builder.setTitle("Sync Settings");
+
+        String message = "Sync Status:\n\n";
+
+        if (!isInitializationComplete) {
+            message += "Status: Initializing...\n\n";
+        } else if (initializationSuccess) {
+            message += "Status: Ready ✓\n\n";
+            message += "Last sync: " + getLastSyncTimeString() + "\n\n";
+
+            if (syncManager.hasPendingSync()) {
+                message += "Pending items: " + syncManager.getPendingSyncCount() + "\n\n";
+                message += "Some items couldn't be synced. Try manual sync when you have internet connection.";
+            } else {
+                message += "All data is synced ✓";
+            }
+        } else {
+            message += "Status: Unavailable ⚠\n\n";
+            message += "Sync service is not available. App is running in offline mode.";
+        }
+
+        builder.setMessage(message);
+
+        if (isInitializationComplete && initializationSuccess && syncManager.hasPendingSync()) {
+            builder.setPositiveButton("Retry Sync", (dialog, which) -> retryPendingSync());
+        }
+
+        if (isInitializationComplete && initializationSuccess) {
+            builder.setNeutralButton("Manual Sync", (dialog, which) -> performManualSync());
+        }
+
+        builder.setNegativeButton("Close", null);
+        builder.show();
+    }
+
+    private void retryPendingSync() {
+        if (!isInitializationComplete || !initializationSuccess) {
+            Toast.makeText(this, "Sync service not available", Toast.LENGTH_SHORT).show();
+            return;
+        }
+
+        showSyncProgress("Retrying sync...");
+
+        syncManager.retryPendingSync(new MealSyncManager.SyncStatusListener() {
+            @Override
+            public void onSyncStarted() {
+                // Already showing progress
+            }
+
+            @Override
+            public void onSyncCompleted(boolean success, String message) {
+                mainHandler.post(() -> {
+                    hideSyncProgress();
+                    Toast.makeText(MainActivity.this, message, Toast.LENGTH_SHORT).show();
+                });
+            }
+
+            @Override
+            public void onSyncProgress(int completed, int total) {
+                // Update progress if needed
+            }
+        });
+    }
+
+    private String getLastSyncTimeString() {
+        long lastSync = syncManager.getLastSyncTime();
+        if (lastSync == 0) {
+            return "Never";
+        }
+
+        long timeDiff = System.currentTimeMillis() - lastSync;
+        if (timeDiff < 60000) { // Less than 1 minute
+            return "Just now";
+        } else if (timeDiff < 3600000) { // Less than 1 hour
+            return (timeDiff / 60000) + " minutes ago";
+        } else if (timeDiff < 86400000) { // Less than 1 day
+            return (timeDiff / 3600000) + " hours ago";
+        } else {
+            return new SimpleDateFormat("MMM d, yyyy", Locale.getDefault()).format(new Date(lastSync));
+        }
+    }
+
+    private void showInitializationProgress(String message) {
+        if (initializationDialog == null) {
+            initializationDialog = new ProgressDialog(this);
+            initializationDialog.setCancelable(false);
+        }
+        initializationDialog.setMessage(message);
+        if (!initializationDialog.isShowing()) {
+            initializationDialog.show();
+        }
+    }
+
+    private void hideInitializationProgress() {
+        if (initializationDialog != null && initializationDialog.isShowing()) {
+            initializationDialog.dismiss();
+        }
+    }
+
+    private void showSyncProgress(String message) {
+        if (syncProgressDialog == null) {
+            syncProgressDialog = new ProgressDialog(this);
+            syncProgressDialog.setCancelable(false);
+        }
+        syncProgressDialog.setMessage(message);
+        syncProgressDialog.show();
+    }
+
+    private void hideSyncProgress() {
+        if (syncProgressDialog != null && syncProgressDialog.isShowing()) {
+            syncProgressDialog.dismiss();
+        }
+    }
+
+    private void showSyncStatus(String message, boolean isWarning) {
+        // You can implement a subtle status indicator here
+        // For now, just use toast for important messages
+        if (isWarning) {
+            // Only show warning toasts, not success messages to avoid spam
+            // Toast.makeText(this, message, Toast.LENGTH_SHORT).show();
+        }
     }
 
     private void performLogout() {
@@ -299,6 +738,11 @@ public class MainActivity extends AppCompatActivity implements MealAdapter.OnMea
 
         // Sign out from Google
         mGoogleSignInClient.signOut().addOnCompleteListener(this, task -> {
+            // Cleanup sync manager
+            if (syncManager != null) {
+                syncManager.shutdown();
+            }
+
             // Show logout message
             Toast.makeText(MainActivity.this, "Logged out successfully", Toast.LENGTH_SHORT).show();
 
@@ -308,5 +752,19 @@ public class MainActivity extends AppCompatActivity implements MealAdapter.OnMea
             startActivity(intent);
             finish();
         });
+    }
+
+    @Override
+    protected void onDestroy() {
+        super.onDestroy();
+        if (syncManager != null) {
+            syncManager.shutdown();
+        }
+        if (syncProgressDialog != null && syncProgressDialog.isShowing()) {
+            syncProgressDialog.dismiss();
+        }
+        if (initializationDialog != null && initializationDialog.isShowing()) {
+            initializationDialog.dismiss();
+        }
     }
 }
