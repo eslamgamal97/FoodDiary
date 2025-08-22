@@ -13,7 +13,6 @@ android {
         targetSdk 36
         versionCode 1
         versionName "1.0"
-
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
     }
 
@@ -23,12 +22,12 @@ android {
             proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
         }
     }
+
     compileOptions {
         sourceCompatibility JavaVersion.VERSION_11
         targetCompatibility JavaVersion.VERSION_11
     }
 
-    // Add packaging options to handle duplicate files
     packagingOptions {
         pickFirst '**/META-INF/DEPENDENCIES'
         pickFirst '**/META-INF/LICENSE'
@@ -43,7 +42,7 @@ android {
 }
 
 dependencies {
-    // Existing dependencies
+    // Android dependencies
     implementation libs.appcompat
     implementation libs.material
     implementation libs.activity
@@ -52,52 +51,31 @@ dependencies {
     androidTestImplementation libs.ext.junit
     androidTestImplementation libs.espresso.core
 
-    // Firebase and Google Play Services
-//    implementation 'com.google.android.gms:play-services-auth:21.2.0'
+    // Firebase Auth
     implementation 'com.google.firebase:firebase-auth:23.0.0'
 
-    // Google Sheets API dependencies
-//    implementation 'com.google.apis:google-api-services-sheets:v4-rev20220927-2.0.0'
-//    implementation 'com.google.api-client:google-api-client-android:2.0.0'
-    implementation 'com.google.oauth-client:google-oauth-client-jetty:1.34.1'
-//    implementation 'com.google.api-client:google-api-client-gson:1.32.1'
+    // Google Play Services & Auth
+    implementation 'com.google.android.gms:play-services-auth:21.2.0'
 
-    // HTTP Transport and JSON support
-    implementation 'com.google.http-client:google-http-client-gson:1.42.3'
-    implementation 'com.google.http-client:google-http-client-jackson2:1.42.3'
-    implementation 'com.google.http-client:google-http-client-android:1.42.3'
-
-    // Google Drive API (needed for spreadsheet creation)
-    implementation 'com.google.apis:google-api-services-drive:v3-rev20220815-2.0.0'
-
-    // JSON parsing
-    implementation 'com.google.code.gson:gson:2.10.1'
-
-    // Apache HTTP components
-    implementation 'org.apache.httpcomponents:httpclient:4.5.14'
-    implementation 'org.apache.httpcomponents:httpcore:4.4.16'
-
-    // For background threading
-    implementation 'androidx.work:work-runtime:2.9.0'
-
-    implementation 'com.google.android.gms:play-services-auth:20.7.0'
+    // Google API Client
     implementation 'com.google.api-client:google-api-client-android:2.0.0'
-    implementation 'com.google.apis:google-api-services-sheets:v4-rev20220927-2.0.0'
     implementation 'com.google.api-client:google-api-client-gson:2.0.0'
-    implementation 'com.google.auth:google-auth-library-oauth2-http:1.19.0'
-    // Core Google API Client
-    implementation 'com.google.api-client:google-api-client-android:1.32.1'
-    implementation 'com.google.api-client:google-api-client-gson:1.32.1'
 
     // Google Sheets API
     implementation 'com.google.apis:google-api-services-sheets:v4-rev20220927-2.0.0'
 
-    // Google Play Services (for Sign-In)
-    implementation 'com.google.android.gms:play-services-auth:20.7.0'
+    // HTTP Transport
+    implementation 'com.google.http-client:google-http-client-gson:1.42.3'
+    implementation 'com.google.http-client:google-http-client-android:1.42.3'
 
-    // HTTP transport
-    implementation 'com.google.http-client:google-http-client-gson:1.42.0'
-    implementation 'com.google.http-client:google-http-client-android:1.42.0'
+    // Google Auth Library
+    implementation 'com.google.auth:google-auth-library-oauth2-http:1.19.0'
+
+    // Background work
+    implementation 'androidx.work:work-runtime:2.9.0'
+
+    // JSON parsing
+    implementation 'com.google.code.gson:gson:2.10.1'
 }
 
 apply plugin: 'com.google.gms.google-services'
