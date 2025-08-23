@@ -46,8 +46,8 @@ public class Meal {
 
     // Get formatted time string (12:30 PM)
     public String getFormattedTime() {
-        SimpleDateFormat timeFormat = new SimpleDateFormat("h:mm a", Locale.getDefault());
-        return timeFormat.format(timestamp);
+        SimpleDateFormat timeFormat = new SimpleDateFormat("HH:mm", Locale.getDefault());
+        return timeFormat.format(this.timestamp);
     }
 
     // Setters

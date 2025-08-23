@@ -30,6 +30,9 @@ import java.util.Collections;
 import java.util.List;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.text.SimpleDateFormat;
+import java.text.ParseException;
+import java.util.Locale;
 
 public class GoogleSheetsManager {
     private static final String TAG = "GoogleSheetsManager";
@@ -189,13 +192,13 @@ public class GoogleSheetsManager {
 
     private void setupSpreadsheetHeaders(String spreadsheetId) throws IOException {
         List<List<Object>> values = Arrays.asList(
-                Arrays.asList("Date", "Category", "Meal Name", "Time", "Timestamp")
+                Arrays.asList("Date", "Category", "Meal Name", "Time") // Removed "Timestamp"
         );
 
         ValueRange body = new ValueRange().setValues(values);
 
         sheetsService.spreadsheets().values()
-                .update(spreadsheetId, "Sheet1!A1:E1", body)
+                .update(spreadsheetId, "Sheet1!A1:D1", body) // Changed from A1:E1 to A1:D1
                 .setValueInputOption("RAW")
                 .execute();
 
@@ -214,15 +217,15 @@ public class GoogleSheetsManager {
                                 meal.getDate(),
                                 meal.getCategory(),
                                 meal.getName(),
-                                meal.getFormattedTime(),
-                                meal.getTimestamp().getTime()
+                                meal.getFormattedTime()
+                                // Removed meal.getTimestamp().getTime()
                         )
                 );
 
                 ValueRange body = new ValueRange().setValues(values);
 
                 AppendValuesResponse result = sheetsService.spreadsheets().values()
-                        .append(spreadsheetId, "Sheet1!A:E", body)
+                        .append(spreadsheetId, "Sheet1!A:D", body) // Changed from A:E to A:D
                         .setValueInputOption("RAW")
                         .setInsertDataOption("INSERT_ROWS")
                         .execute();
@@ -254,15 +257,15 @@ public class GoogleSheetsManager {
                             meal.getDate(),
                             meal.getCategory(),
                             meal.getName(),
-                            meal.getFormattedTime(),
-                            meal.getTimestamp().getTime()
+                            meal.getFormattedTime()
+                            // Removed meal.getTimestamp().getTime()
                     ));
                 }
 
                 ValueRange body = new ValueRange().setValues(values);
 
                 AppendValuesResponse result = sheetsService.spreadsheets().values()
-                        .append(spreadsheetId, "Sheet1!A:E", body)
+                        .append(spreadsheetId, "Sheet1!A:D", body) // Changed from A:E to A:D
                         .setValueInputOption("RAW")
                         .setInsertDataOption("INSERT_ROWS")
                         .execute();
@@ -285,7 +288,7 @@ public class GoogleSheetsManager {
         executor.execute(() -> {
             try {
                 ValueRange response = sheetsService.spreadsheets().values()
-                        .get(spreadsheetId, "Sheet1!A2:E") // Skip header row
+                        .get(spreadsheetId, "Sheet1!A2:D")
                         .execute();
 
                 List<List<Object>> values = response.getValues();
@@ -293,14 +296,15 @@ public class GoogleSheetsManager {
 
                 if (values != null) {
                     for (List<Object> row : values) {
-                        if (row.size() >= 5) {
+                        if (row.size() >= 4) {
                             String date = row.get(0).toString();
                             String category = row.get(1).toString();
                             String name = row.get(2).toString();
                             String timeStr = row.get(3).toString();
-                            long timestamp = Long.parseLong(row.get(4).toString());
 
-                            java.util.Date mealTimestamp = new java.util.Date(timestamp);
+                            // Reconstruct timestamp from date and time
+                            java.util.Date mealTimestamp = reconstructTimestamp(date, timeStr);
+
                             Meal meal = new Meal(name, category, mealTimestamp, date);
                             meals.add(meal);
                         }
@@ -310,7 +314,7 @@ public class GoogleSheetsManager {
                 Log.d(TAG, "Loaded " + meals.size() + " meals from sheets");
                 callback.onMealsLoaded(meals);
 
-            } catch (IOException | NumberFormatException e) {
+            } catch (IOException e) {
                 Log.e(TAG, "Failed to load meals from sheets", e);
                 callback.onError("Failed to load meals: " + e.getMessage());
             }
@@ -344,28 +348,36 @@ public class GoogleSheetsManager {
 
         executor.execute(() -> {
             try {
-                // First, get all data to find the row to delete
+                // Get all data to find the row to delete
                 ValueRange response = sheetsService.spreadsheets().values()
-                        .get(spreadsheetId, "Sheet1!A:E")
+                        .get(spreadsheetId, "Sheet1!A:D")
                         .execute();
 
                 List<List<Object>> values = response.getValues();
                 int rowToDelete = -1;
 
+                // Create unique identifier for the meal to delete
+                String targetSignature = createSheetMealSignature(
+                        mealToDelete.getDate(),
+                        mealToDelete.getFormattedTime(),
+                        mealToDelete.getName(),
+                        mealToDelete.getCategory()
+                );
+
                 // Find the row (skip header at index 0)
                 for (int i = 1; i < values.size(); i++) {
                     List<Object> row = values.get(i);
-                    if (row.size() >= 5) {
-                        String name = row.get(2).toString();
-                        String category = row.get(1).toString();
+                    if (row.size() >= 4) {
                         String date = row.get(0).toString();
-                        long timestamp = Long.parseLong(row.get(4).toString());
+                        String category = row.get(1).toString();
+                        String name = row.get(2).toString();
+                        String time = row.get(3).toString();
 
-                        if (name.equals(mealToDelete.getName()) &&
-                                category.equals(mealToDelete.getCategory()) &&
-                                date.equals(mealToDelete.getDate()) &&
-                                timestamp == mealToDelete.getTimestamp().getTime()) {
+                        String rowSignature = createSheetMealSignature(date, time, name, category);
+
+                        if (targetSignature.equals(rowSignature)) {
                             rowToDelete = i + 1; // +1 because sheets are 1-indexed
+                            Log.d(TAG, "Found meal to delete at row " + rowToDelete + ": " + targetSignature);
                             break;
                         }
                     }
@@ -377,9 +389,9 @@ public class GoogleSheetsManager {
                     requests.add(new Request()
                             .setDeleteDimension(new DeleteDimensionRequest()
                                     .setRange(new DimensionRange()
-                                            .setSheetId(0) // Assuming first sheet
+                                            .setSheetId(0)
                                             .setDimension("ROWS")
-                                            .setStartIndex(rowToDelete - 1) // 0-indexed for API
+                                            .setStartIndex(rowToDelete - 1)
                                             .setEndIndex(rowToDelete))));
 
                     BatchUpdateSpreadsheetRequest batchRequest = new BatchUpdateSpreadsheetRequest()
@@ -387,17 +399,35 @@ public class GoogleSheetsManager {
 
                     sheetsService.spreadsheets().batchUpdate(spreadsheetId, batchRequest).execute();
 
-                    Log.d(TAG, "Meal deleted from sheets: " + mealToDelete.getName());
+                    Log.d(TAG, "Meal deleted from sheets: " + mealToDelete.getName() + " at " + mealToDelete.getFormattedTime());
                     callback.onSuccess("Meal deleted successfully");
                 } else {
+                    Log.w(TAG, "Meal not found in spreadsheet: " + targetSignature);
                     callback.onError("Meal not found in spreadsheet");
                 }
 
-            } catch (IOException | NumberFormatException e) {
+            } catch (IOException e) {
                 Log.e(TAG, "Failed to delete meal from sheets", e);
                 callback.onError("Failed to delete meal: " + e.getMessage());
             }
         });
+    }
+
+    //Helper method to create sheet-based meal signature
+    private String createSheetMealSignature(String date, String time, String name, String category) {
+        return date + "|" + time + "|" + name + "|" + category;
+    }
+
+    // 6. Helper method to reconstruct timestamp from date and time strings
+    private java.util.Date reconstructTimestamp(String dateStr, String timeStr) {
+        try {
+            // Assuming date format is "yyyy-MM-dd" and time format is "HH:mm"
+            SimpleDateFormat dateTimeFormat = new SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.getDefault());
+            return dateTimeFormat.parse(dateStr + " " + timeStr);
+        } catch (ParseException e) {
+            Log.w(TAG, "Failed to parse date/time: " + dateStr + " " + timeStr + ", using current time");
+            return new java.util.Date(); // Fallback to current time
+        }
     }
 
     public void clearAllData(SyncCallback callback) {
@@ -409,7 +439,7 @@ public class GoogleSheetsManager {
             try {
                 ClearValuesRequest clearRequest = new ClearValuesRequest();
                 sheetsService.spreadsheets().values()
-                        .clear(spreadsheetId, "Sheet1!A2:E", clearRequest)
+                        .clear(spreadsheetId, "Sheet1!A2:D", clearRequest) // Changed from A2:E to A2:D
                         .execute();
 
                 Log.d(TAG, "All meal data cleared from sheets");

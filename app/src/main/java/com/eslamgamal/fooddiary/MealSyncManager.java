@@ -361,12 +361,13 @@ public class MealSyncManager {
             }
         }
 
+        Log.d(TAG, "Found " + mealsToUpload.size() + " meals to upload out of " + localMeals.size() + " local meals");
         return mealsToUpload;
     }
 
     private String createMealSignature(Meal meal) {
         // Create a unique signature for comparing meals
-        return meal.getDate() + "|" + meal.getCategory() + "|" + meal.getName() + "|" + meal.getTimestamp().getTime();
+        return meal.getDate() + "|" + meal.getFormattedTime() + "|" + meal.getName() + "|" + meal.getCategory();
     }
 
     private void addToPendingSync(Meal meal) {
@@ -409,9 +410,9 @@ public class MealSyncManager {
         return sheetsManager.isReady();
     }
 
-    // Simple serialization methods (you might want to use JSON or a more robust approach)
+    //serialization methods
     private String serializeMeal(Meal meal) {
-        return meal.getName() + ";" + meal.getCategory() + ";" + meal.getDate() + ";" + meal.getTimestamp().getTime();
+        return meal.getName() + ";" + meal.getCategory() + ";" + meal.getDate() + ";" + meal.getFormattedTime();
     }
 
     private Meal parseMealFromString(String mealData) {
@@ -421,9 +422,12 @@ public class MealSyncManager {
                 String name = parts[0];
                 String category = parts[1];
                 String date = parts[2];
-                long timestamp = Long.parseLong(parts[3]);
+                String timeStr = parts[3];
 
-                return new Meal(name, category, new java.util.Date(timestamp), date);
+                // Reconstruct timestamp from date and time
+                java.util.Date mealTimestamp = reconstructTimestampFromDateTime(date, timeStr);
+
+                return new Meal(name, category, mealTimestamp, date);
             }
         } catch (Exception e) {
             Log.e(TAG, "Failed to parse meal data: " + mealData, e);
@@ -431,6 +435,16 @@ public class MealSyncManager {
         return null;
     }
 
+    private java.util.Date reconstructTimestampFromDateTime(String dateStr, String timeStr) {
+        try {
+            // Assuming date format is "yyyy-MM-dd" and time format is "HH:mm"
+            java.text.SimpleDateFormat dateTimeFormat = new java.text.SimpleDateFormat("yyyy-MM-dd HH:mm", java.util.Locale.getDefault());
+            return dateTimeFormat.parse(dateStr + " " + timeStr);
+        } catch (java.text.ParseException e) {
+            Log.w(TAG, "Failed to parse date/time: " + dateStr + " " + timeStr + ", using current time");
+            return new java.util.Date(); // Fallback to current time
+        }
+    }
     public String getSpreadsheetUrl() {
         return sheetsManager.getSpreadsheetUrl();
     }
