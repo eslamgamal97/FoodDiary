@@ -192,13 +192,13 @@ public class GoogleSheetsManager {
 
     private void setupSpreadsheetHeaders(String spreadsheetId) throws IOException {
         List<List<Object>> values = Arrays.asList(
-                Arrays.asList("Date", "Category", "Meal Name", "Time") // Removed "Timestamp"
+                Arrays.asList("Date", "Category", "Meal Name", "Time")
         );
 
         ValueRange body = new ValueRange().setValues(values);
 
         sheetsService.spreadsheets().values()
-                .update(spreadsheetId, "Sheet1!A1:D1", body) // Changed from A1:E1 to A1:D1
+                .update(spreadsheetId, "Sheet1!A1:D1", body) // A1:D1
                 .setValueInputOption("RAW")
                 .execute();
 
