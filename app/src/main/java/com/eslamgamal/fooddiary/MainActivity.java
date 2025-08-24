@@ -6,9 +6,12 @@ import android.content.Intent;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
+import android.text.InputFilter;
 import android.text.InputType;
+import android.util.Log;
 import android.view.LayoutInflater;
 import android.view.View;
+import android.view.WindowManager;
 import android.widget.Button;
 import android.widget.EditText;
 import android.widget.ImageButton;
@@ -61,8 +64,8 @@ public class MainActivity extends AppCompatActivity implements MealAdapter.OnMea
 
     // Sync components
     private MealSyncManager syncManager;
-    private ProgressDialog syncProgressDialog;
-    private ProgressDialog initializationDialog;
+    private ModernProgressDialog syncProgressDialog;
+    private ModernProgressDialog initializationDialog;
     private Handler mainHandler;
 
     // Initialization state
@@ -301,43 +304,69 @@ public class MainActivity extends AppCompatActivity implements MealAdapter.OnMea
     }
 
     private void showAddMealDialog(String category) {
+        if (!InputValidator.validateMealCategoryWithToast(this, category)) {
+            return;
+        }
+
         AlertDialog.Builder builder = new AlertDialog.Builder(this);
         builder.setTitle("Add " + category.substring(0, 1).toUpperCase() + category.substring(1));
 
         // Create input field
         final EditText input = new EditText(this);
-        input.setInputType(InputType.TYPE_CLASS_TEXT);
+        input.setInputType(InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_FLAG_CAP_SENTENCES);
         input.setHint("Enter meal name");
+        input.setMaxLines(1);
+        input.setSingleLine(true);
+
+        // Set max length filter
+        input.setFilters(new InputFilter[]{new InputFilter.LengthFilter(Meal.MAX_NAME_LENGTH)});
+
         builder.setView(input);
 
         builder.setPositiveButton("Add", (dialog, which) -> {
-            String mealName = input.getText().toString().trim();
-            if (!mealName.isEmpty()) {
-                addMeal(mealName, category);
-            } else {
-                Toast.makeText(MainActivity.this, "Please enter a meal name", Toast.LENGTH_SHORT).show();
+            String mealName = input.getText().toString();
+            if (InputValidator.validateMealNameWithToast(this, mealName)) {
+                addMeal(InputValidator.cleanMealName(mealName), category);
             }
         });
 
         builder.setNegativeButton("Cancel", (dialog, which) -> dialog.cancel());
-        builder.show();
+
+        AlertDialog dialog = builder.create();
+        dialog.show();
+
+        // Focus on input and show keyboard
+        input.requestFocus();
+        dialog.getWindow().setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_STATE_VISIBLE);
     }
 
     private void addMeal(String name, String category) {
-        // Create meal with selected date
-        Meal meal = createMealWithSelectedDate(name, category);
-        allMeals.add(meal);
-        loadMealsForSelectedDate();
+        try {
+            // Validate inputs
+            if (!InputValidator.validateMealNameWithToast(this, name) ||
+                    !InputValidator.validateMealCategoryWithToast(this, category)) {
+                return;
+            }
 
-        Toast.makeText(this, name + " added to " + category, Toast.LENGTH_SHORT).show();
+            // Create meal with selected date
+            Meal meal = createMealWithSelectedDate(name, category);
+            allMeals.add(meal);
+            loadMealsForSelectedDate();
 
-        // Only sync to cloud if initialization is complete and successful
-        if (isInitializationComplete && initializationSuccess) {
-            syncMealToCloud(meal);
-        } else if (!isInitializationComplete) {
-            Toast.makeText(this, "Sync still initializing, meal saved locally", Toast.LENGTH_SHORT).show();
-        } else {
-            Toast.makeText(this, "Offline mode - meal saved locally", Toast.LENGTH_SHORT).show();
+            Toast.makeText(this, name + " added to " + meal.getCategoryDisplayName(), Toast.LENGTH_SHORT).show();
+
+            // Only sync to cloud if initialization is complete and successful
+            if (isInitializationComplete && initializationSuccess) {
+                syncMealToCloud(meal);
+            } else if (!isInitializationComplete) {
+                showSyncStatus("⏳ Sync initializing, meal saved locally", false);
+            } else {
+                showSyncStatus("📱 Offline mode - meal saved locally", true);
+            }
+
+        } catch (Exception e) {
+            Log.e("MainActivity", "Error adding meal", e);
+            Toast.makeText(this, "Failed to add meal. Please try again.", Toast.LENGTH_SHORT).show();
         }
     }
 
@@ -468,12 +497,13 @@ public class MainActivity extends AppCompatActivity implements MealAdapter.OnMea
     }
 
     @Override
-    public void onMealDelete(int position) {
-        // Find which adapter called this and get the meal
-        Meal mealToDelete = findMealToDelete(position);
-        if (mealToDelete != null) {
-            showDeleteConfirmDialog(mealToDelete);
+    public void onMealDelete(Meal meal, int position) {
+        if (meal == null) {
+            Toast.makeText(this, "Error: Could not identify meal to delete", Toast.LENGTH_SHORT).show();
+            return;
         }
+
+        showDeleteConfirmDialog(meal);
     }
 
     private Meal findMealToDelete(int position) {
@@ -499,57 +529,90 @@ public class MainActivity extends AppCompatActivity implements MealAdapter.OnMea
     private void showDeleteConfirmDialog(Meal meal) {
         new AlertDialog.Builder(this)
                 .setTitle("Delete Meal")
-                .setMessage("Are you sure you want to delete \"" + meal.getName() + "\"?")
+                .setMessage("Are you sure you want to delete \"" + meal.getName() +
+                        "\" from " + meal.getCategoryDisplayName() + "?")
                 .setPositiveButton("Delete", (dialog, which) -> deleteMeal(meal))
                 .setNegativeButton("Cancel", null)
+                .setIcon(android.R.drawable.ic_dialog_alert)
                 .show();
     }
 
     private void deleteMeal(Meal meal) {
-        // Remove from local list
-        allMeals.remove(meal);
-        loadMealsForSelectedDate();
+        if (meal == null) {
+            Toast.makeText(this, "Error: Could not delete meal", Toast.LENGTH_SHORT).show();
+            return;
+        }
 
-        // Only delete from cloud if sync is available
-        if (isInitializationComplete && initializationSuccess) {
-            // Delete from cloud
-            syncManager.deleteMeal(meal, new MealSyncManager.SyncStatusListener() {
-                @Override
-                public void onSyncStarted() {
-                    // Show deleting indicator
-                }
+        try {
+            // Remove from local list
+            boolean removed = allMeals.remove(meal);
+            if (!removed) {
+                Toast.makeText(this, "Meal not found in local data", Toast.LENGTH_SHORT).show();
+                return;
+            }
 
-                @Override
-                public void onSyncCompleted(boolean success, String message) {
-                    mainHandler.post(() -> {
-                        if (success) {
-                            Toast.makeText(MainActivity.this, "Meal deleted", Toast.LENGTH_SHORT).show();
-                            showSyncStatus("✓ Deleted", false);
-                        } else {
-                            Toast.makeText(MainActivity.this, "Failed to delete from cloud", Toast.LENGTH_SHORT).show();
-                            showSyncStatus("⚠ Delete failed", true);
-                        }
-                    });
-                }
+            loadMealsForSelectedDate();
 
-                @Override
-                public void onSyncProgress(int completed, int total) {
-                    // Not used
-                }
-            });
-        } else {
-            Toast.makeText(this, "Meal deleted locally (offline mode)", Toast.LENGTH_SHORT).show();
+            // Only delete from cloud if sync is available
+            if (isInitializationComplete && initializationSuccess) {
+                deleteMealFromCloud(meal);
+            } else {
+                Toast.makeText(this, "Meal deleted locally (offline mode)", Toast.LENGTH_SHORT).show();
+            }
+
+        } catch (Exception e) {
+            Log.e("MainActivity", "Error deleting meal", e);
+            Toast.makeText(this, "Failed to delete meal", Toast.LENGTH_SHORT).show();
+
+            // Re-add meal if deletion failed
+            if (!allMeals.contains(meal)) {
+                allMeals.add(meal);
+                loadMealsForSelectedDate();
+            }
         }
     }
 
+    private void deleteMealFromCloud(Meal meal) {
+        syncManager.deleteMeal(meal, new MealSyncManager.SyncStatusListener() {
+            @Override
+            public void onSyncStarted() {
+                // Optional: Show deleting indicator
+            }
+
+            @Override
+            public void onSyncCompleted(boolean success, String message) {
+                mainHandler.post(() -> {
+                    if (success) {
+                        Toast.makeText(MainActivity.this, "Meal deleted", Toast.LENGTH_SHORT).show();
+                        showSyncStatus("✓ Deleted", false);
+                    } else {
+                        Toast.makeText(MainActivity.this, "Failed to delete from cloud: " + message, Toast.LENGTH_LONG).show();
+                        showSyncStatus("⚠ Delete failed", true);
+                    }
+                });
+            }
+
+            @Override
+            public void onSyncProgress(int completed, int total) {
+                // Not used
+            }
+        });
+    }
+
     private void performManualSync() {
+        // Check network first
+        if (!NetworkUtils.isNetworkAvailable(this)) {
+            Toast.makeText(this, "No internet connection available", Toast.LENGTH_LONG).show();
+            return;
+        }
+
         if (!isInitializationComplete) {
             Toast.makeText(this, "Sync is still initializing, please wait...", Toast.LENGTH_SHORT).show();
             return;
         }
 
         if (!initializationSuccess) {
-            Toast.makeText(this, "Sync service unavailable. Please check your connection and restart the app.", Toast.LENGTH_LONG).show();
+            showSyncRetryDialog();
             return;
         }
 
@@ -567,10 +630,12 @@ public class MainActivity extends AppCompatActivity implements MealAdapter.OnMea
                     hideSyncProgress();
                     if (success) {
                         Toast.makeText(MainActivity.this, "Sync completed successfully", Toast.LENGTH_SHORT).show();
+                        showSyncStatus("✓ Synced", false);
                         // Reload data from cloud
                         loadMealsFromCloud();
                     } else {
                         Toast.makeText(MainActivity.this, "Sync failed: " + message, Toast.LENGTH_LONG).show();
+                        showSyncStatus("⚠ Sync failed", true);
                     }
                 });
             }
@@ -584,6 +649,22 @@ public class MainActivity extends AppCompatActivity implements MealAdapter.OnMea
                 });
             }
         });
+    }
+
+    private void showSyncRetryDialog() {
+        new AlertDialog.Builder(this)
+                .setTitle("Sync Unavailable")
+                .setMessage("Sync service is not available. This could be due to:\n\n" +
+                        "• No internet connection\n" +
+                        "• Google services issues\n" +
+                        "• Authentication problems\n\n" +
+                        "Would you like to retry initializing sync?")
+                .setPositiveButton("Retry", (dialog, which) -> {
+                    checkInitializationStatus();
+                })
+                .setNegativeButton("Continue Offline", null)
+                .setIcon(android.R.drawable.ic_dialog_info)
+                .show();
     }
 
     private void viewSpreadsheet() {
@@ -693,7 +774,7 @@ public class MainActivity extends AppCompatActivity implements MealAdapter.OnMea
 
     private void showInitializationProgress(String message) {
         if (initializationDialog == null) {
-            initializationDialog = new ProgressDialog(this);
+            initializationDialog = new ModernProgressDialog(this);
             initializationDialog.setCancelable(false);
         }
         initializationDialog.setMessage(message);
@@ -710,7 +791,7 @@ public class MainActivity extends AppCompatActivity implements MealAdapter.OnMea
 
     private void showSyncProgress(String message) {
         if (syncProgressDialog == null) {
-            syncProgressDialog = new ProgressDialog(this);
+            syncProgressDialog = new ModernProgressDialog(this);
             syncProgressDialog.setCancelable(false);
         }
         syncProgressDialog.setMessage(message);
