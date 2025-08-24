@@ -65,6 +65,10 @@
         android:layout_width="wrap_content"
         android:layout_height="match_parent"
         android:layout_gravity="start"
+        android:fitsSystemWindows="true"
+        android:background="#15AE5C"
+        app:itemTextColor="@android:color/white"
+        app:itemIconTint="@android:color/white"
         app:menu="@menu/drawer_menu"
         app:headerLayout="@layout/nav_header" />
 

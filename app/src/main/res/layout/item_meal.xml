@@ -1,5 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    xmlns:tools="http://schemas.android.com/tools"
     android:layout_width="match_parent"
     android:layout_height="wrap_content"
     android:orientation="horizontal"
@@ -15,7 +17,8 @@
         android:text="Meal Name"
         android:textSize="14sp"
         android:textColor="#333333"
-        android:layout_marginEnd="8dp" />
+        android:layout_marginEnd="8dp"
+        tools:ignore="HardcodedText" />
 
     <TextView
         android:id="@+id/meal_time"
@@ -24,7 +27,8 @@
         android:text="12:30 PM"
         android:textSize="12sp"
         android:textColor="#666666"
-        android:layout_marginEnd="8dp" />
+        android:layout_marginEnd="8dp"
+        tools:ignore="HardcodedText" />
 
     <ImageButton
         android:id="@+id/delete_meal_button"
@@ -32,7 +36,8 @@
         android:layout_height="24dp"
         android:src="@android:drawable/ic_menu_delete"
         android:background="?attr/selectableItemBackgroundBorderless"
-        android:tint="#FF5722"
-        android:contentDescription="Delete meal" />
+        android:contentDescription="Delete meal"
+        app:tint="#FF5722"
+        tools:ignore="HardcodedText" />
 
 </LinearLayout>
