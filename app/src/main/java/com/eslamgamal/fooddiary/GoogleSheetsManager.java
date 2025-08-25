@@ -121,12 +121,7 @@ public class GoogleSheetsManager {
                 isInitializing = false;
 
                 // Initialize user's spreadsheet if we don't have one
-                if (spreadsheetId == null) {
-                    Log.d(TAG, "No existing spreadsheet ID, creating new spreadsheet...");
-                    initializeUserSpreadsheet(account);
-                } else {
-                    Log.d(TAG, "Using existing spreadsheet ID: " + spreadsheetId);
-                }
+                validateOrCreateSpreadsheet(account);
 
             } catch (Exception e) {
                 Log.e(TAG, "✗ ERROR during service initialization", e);
@@ -281,9 +276,7 @@ public class GoogleSheetsManager {
     }
 
     public void loadMealsFromSheets(LoadCallback callback) {
-        if (!checkInitialization(callback)) {
-            return;
-        }
+        if (!checkInitialization(callback)) return;
 
         executor.execute(() -> {
             try {
@@ -464,11 +457,26 @@ public class GoogleSheetsManager {
         }
 
         if (spreadsheetId == null) {
-            String error = "Spreadsheet not ready";
-            Log.w(TAG, error);
-            if (callback != null) {
-                callback.onError(error);
+            Log.w(TAG, "Spreadsheet ID is null, creating a new spreadsheet...");
+            GoogleSignInAccount account = GoogleSignIn.getLastSignedInAccount(context);
+            if (account != null) {
+                initializeUserSpreadsheet(account); // async create
             }
+            if (callback != null) callback.onError("Spreadsheet not ready, please retry");
+            return false;
+        }
+
+        try {
+            sheetsService.spreadsheets().get(spreadsheetId).execute();
+        } catch (IOException e) {
+            Log.w(TAG, "Spreadsheet ID is invalid or deleted, recreating...");
+            prefs.edit().remove(KEY_SPREADSHEET_ID).apply();
+            spreadsheetId = null;
+            GoogleSignInAccount account = GoogleSignIn.getLastSignedInAccount(context);
+            if (account != null) {
+                initializeUserSpreadsheet(account);
+            }
+            if (callback != null) callback.onError("Spreadsheet was deleted, creating a new one. Please retry.");
             return false;
         }
 
@@ -495,6 +503,20 @@ public class GoogleSheetsManager {
             return false;
         }
 
+        try {
+            sheetsService.spreadsheets().get(spreadsheetId).execute();
+        } catch (IOException e) {
+            Log.w(TAG, "Spreadsheet ID is invalid or deleted, recreating...");
+            prefs.edit().remove(KEY_SPREADSHEET_ID).apply();
+            spreadsheetId = null;
+            GoogleSignInAccount account = GoogleSignIn.getLastSignedInAccount(context);
+            if (account != null) {
+                initializeUserSpreadsheet(account);
+            }
+            if (callback != null) callback.onError("Spreadsheet was deleted, creating a new one. Please retry.");
+            return false;
+        }
+
         return true;
     }
 
@@ -504,6 +526,29 @@ public class GoogleSheetsManager {
         }
         return null;
     }
+
+    private void validateOrCreateSpreadsheet(GoogleSignInAccount account) {
+        executor.execute(() -> {
+            try {
+                if (spreadsheetId != null) {
+                    // Try to fetch spreadsheet metadata
+                    sheetsService.spreadsheets().get(spreadsheetId).execute();
+                    Log.d(TAG, "Spreadsheet exists and is valid: " + spreadsheetId);
+                } else {
+                    throw new IOException("Spreadsheet ID is null");
+                }
+            } catch (IOException e) {
+                Log.w(TAG, "Spreadsheet not found or deleted, creating a new one...");
+                // Reset stored ID
+                prefs.edit().remove(KEY_SPREADSHEET_ID).apply();
+                spreadsheetId = null;
+                // Create a new sheet
+                initializeUserSpreadsheet(account);
+            }
+        });
+    }
+
+    
 
     public boolean isReady() {
         boolean ready = isInitialized && spreadsheetId != null;
