@@ -1,0 +1,515 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Food Diary - Daily Meal Tracking Made Simple</title>
+    <meta name="description" content="Track your daily meals, nutrition, and eating habits with Food Diary. Sync with Google Sheets for easy meal planning and analysis.">
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            line-height: 1.6;
+            color: #333;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 0 20px;
+        }
+
+        /* Header */
+        header {
+            background: rgba(255, 255, 255, 0.95);
+            backdrop-filter: blur(10px);
+            padding: 1rem 0;
+            position: fixed;
+            top: 0;
+            width: 100%;
+            z-index: 1000;
+            box-shadow: 0 2px 20px rgba(0, 0, 0, 0.1);
+        }
+
+        nav {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .logo {
+            display: flex;
+            align-items: center;
+            font-size: 1.5rem;
+            font-weight: bold;
+            color: #667eea;
+        }
+
+        .logo::before {
+            content: "🍽️";
+            margin-right: 10px;
+            font-size: 2rem;
+        }
+
+        .nav-links {
+            display: flex;
+            list-style: none;
+            gap: 2rem;
+        }
+
+        .nav-links a {
+            text-decoration: none;
+            color: #333;
+            font-weight: 500;
+            transition: color 0.3s ease;
+        }
+
+        .nav-links a:hover {
+            color: #667eea;
+        }
+
+        /* Hero Section */
+        .hero {
+            padding: 120px 0 80px;
+            text-align: center;
+            color: white;
+        }
+
+        .hero h1 {
+            font-size: 3.5rem;
+            margin-bottom: 1rem;
+            text-shadow: 0 2px 10px rgba(0, 0, 0, 0.3);
+            animation: fadeInUp 1s ease;
+        }
+
+        .hero p {
+            font-size: 1.3rem;
+            margin-bottom: 2rem;
+            opacity: 0.9;
+            max-width: 600px;
+            margin-left: auto;
+            margin-right: auto;
+            animation: fadeInUp 1s ease 0.2s both;
+        }
+
+        .cta-button {
+            display: inline-block;
+            background: linear-gradient(45deg, #ff6b6b, #ee5a24);
+            color: white;
+            padding: 15px 40px;
+            text-decoration: none;
+            border-radius: 50px;
+            font-weight: bold;
+            font-size: 1.1rem;
+            transition: all 0.3s ease;
+            box-shadow: 0 8px 30px rgba(0, 0, 0, 0.2);
+            animation: fadeInUp 1s ease 0.4s both;
+        }
+
+        .cta-button:hover {
+            transform: translateY(-3px);
+            box-shadow: 0 12px 40px rgba(0, 0, 0, 0.3);
+        }
+
+        /* Features Section */
+        .features {
+            background: white;
+            padding: 80px 0;
+        }
+
+        .features h2 {
+            text-align: center;
+            font-size: 2.5rem;
+            margin-bottom: 3rem;
+            color: #333;
+        }
+
+        .features-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 2rem;
+            margin-top: 3rem;
+        }
+
+        .feature-card {
+            background: linear-gradient(135deg, #f8f9ff 0%, #e8eeff 100%);
+            padding: 2rem;
+            border-radius: 20px;
+            text-align: center;
+            transition: transform 0.3s ease;
+            border: 1px solid rgba(102, 126, 234, 0.1);
+        }
+
+        .feature-card:hover {
+            transform: translateY(-5px);
+        }
+
+        .feature-icon {
+            font-size: 3rem;
+            margin-bottom: 1rem;
+        }
+
+        .feature-card h3 {
+            font-size: 1.3rem;
+            margin-bottom: 1rem;
+            color: #333;
+        }
+
+        .feature-card p {
+            color: #666;
+            line-height: 1.6;
+        }
+
+        /* About Section */
+        .about {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 80px 0;
+            text-align: center;
+        }
+
+        .about h2 {
+            font-size: 2.5rem;
+            margin-bottom: 2rem;
+        }
+
+        .about p {
+            font-size: 1.1rem;
+            max-width: 800px;
+            margin: 0 auto 2rem;
+            opacity: 0.9;
+            line-height: 1.8;
+        }
+
+        /* Footer */
+        footer {
+            background: #2c3e50;
+            color: white;
+            text-align: center;
+            padding: 3rem 0;
+        }
+
+        .footer-content {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 2rem;
+            margin-bottom: 2rem;
+        }
+
+        .footer-section h3 {
+            margin-bottom: 1rem;
+            color: #667eea;
+        }
+
+        .footer-section p, .footer-section a {
+            color: #bdc3c7;
+            text-decoration: none;
+            line-height: 1.6;
+        }
+
+        .footer-section a:hover {
+            color: #667eea;
+        }
+
+        .footer-bottom {
+            border-top: 1px solid #34495e;
+            padding-top: 2rem;
+            margin-top: 2rem;
+        }
+
+        /* Animations */
+        @keyframes fadeInUp {
+            from {
+                opacity: 0;
+                transform: translateY(30px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        /* Responsive Design */
+        @media (max-width: 768px) {
+            .hero h1 {
+                font-size: 2.5rem;
+            }
+
+            .hero p {
+                font-size: 1.1rem;
+            }
+
+            .nav-links {
+                display: none;
+            }
+
+            .features-grid {
+                grid-template-columns: 1fr;
+            }
+        }
+    </style>
+    
+    <script>
+        function showPrivacy() {
+            const privacySection = document.getElementById('privacy-policy');
+            const mainSections = document.querySelectorAll('.hero, .features, .about');
+            const footer = document.querySelector('footer');
+            
+            // Show privacy policy and hide main content
+            privacySection.style.display = 'block';
+            mainSections.forEach(section => {
+                section.style.display = 'none';
+            });
+            footer.style.display = 'none';
+            
+            // Scroll to top
+            window.scrollTo(0, 0);
+            
+            // Add a back button dynamically
+            if (!document.getElementById('back-button')) {
+                const backButton = document.createElement('button');
+                backButton.id = 'back-button';
+                backButton.innerHTML = '← Back to Home';
+                backButton.style.cssText = `
+                    position: fixed;
+                    top: 20px;
+                    right: 20px;
+                    background: #667eea;
+                    color: white;
+                    border: none;
+                    padding: 10px 20px;
+                    border-radius: 5px;
+                    cursor: pointer;
+                    z-index: 1001;
+                    font-weight: bold;
+                `;
+                backButton.onclick = showHome;
+                document.body.appendChild(backButton);
+            }
+        }
+        
+        function showHome() {
+            const privacySection = document.getElementById('privacy-policy');
+            const mainSections = document.querySelectorAll('.hero, .features, .about');
+            const footer = document.querySelector('footer');
+            const backButton = document.getElementById('back-button');
+            
+            // Hide privacy policy and show main content
+            privacySection.style.display = 'none';
+            mainSections.forEach(section => {
+                section.style.display = 'block';
+            });
+            footer.style.display = 'block';
+            
+            // Remove back button
+            if (backButton) {
+                backButton.remove();
+            }
+            
+            // Scroll to top
+            window.scrollTo(0, 0);
+        }
+        
+        // Handle page load with hash
+        window.addEventListener('load', function() {
+            if (window.location.hash === '#privacy') {
+                showPrivacy();
+            }
+        });
+    </script>
+</head>
+<body>
+    <header>
+        <nav class="container">
+            <div class="logo">Food Diary</div>
+            <ul class="nav-links">
+                <li><a href="#home">Home</a></li>
+                <li><a href="#features">Features</a></li>
+                <li><a href="#about">About</a></li>
+                <li><a href="#contact">Contact</a></li>
+                <li><a href="#" onclick="showPrivacy(); return false;">Privacy</a></li>
+            </ul>
+        </nav>
+    </header>
+
+    <section id="home" class="hero">
+        <div class="container">
+            <h1>Track Your Meals, Transform Your Health</h1>
+            <p>Food Diary makes it easy to log your daily meals, track nutrition, and sync with Google Sheets for comprehensive meal planning and analysis.</p>
+            <a href="https://play.google.com/store/apps/details?id=com.eslamgamal.fooddiary" class="cta-button">Download on Google Play</a>
+        </div>
+    </section>
+
+    <section id="features" class="features">
+        <div class="container">
+            <h2>Why Choose Food Diary?</h2>
+            <div class="features-grid">
+                <div class="feature-card">
+                    <div class="feature-icon">📱</div>
+                    <h3>Simple & Intuitive</h3>
+                    <p>Clean, easy-to-use interface that makes meal tracking effortless. Log your meals in seconds with our streamlined design.</p>
+                </div>
+                <div class="feature-card">
+                    <div class="feature-icon">☁️</div>
+                    <h3>Google Sheets Integration</h3>
+                    <p>Seamlessly sync your meal data with Google Sheets for advanced analysis, meal planning, and sharing with healthcare providers.</p>
+                </div>
+                <div class="feature-card">
+                    <div class="feature-icon">🔒</div>
+                    <h3>Secure & Private</h3>
+                    <p>Your data is protected with Google Sign-In authentication and encrypted cloud storage. Your privacy is our priority.</p>
+                </div>
+                <div class="feature-card">
+                    <div class="feature-icon">📊</div>
+                    <h3>Track Progress</h3>
+                    <p>Monitor your eating patterns, identify trends, and make informed decisions about your nutrition and health goals.</p>
+                </div>
+                <div class="feature-card">
+                    <div class="feature-icon">🥗</div>
+                    <h3>Comprehensive Logging</h3>
+                    <p>Record meals, snacks, water intake, and notes. Capture photos and add detailed descriptions for complete tracking.</p>
+                </div>
+                <div class="feature-card">
+                    <div class="feature-icon">⚡</div>
+                    <h3>Fast & Reliable</h3>
+                    <p>Optimized for performance with offline capability. Your data syncs automatically when you're back online.</p>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <section id="about" class="about">
+        <div class="container">
+            <h2>About Food Diary</h2>
+            <p>Food Diary was created to help people maintain healthier eating habits through simple, consistent meal tracking. Whether you're managing a health condition, trying to lose weight, or simply want to be more mindful of your nutrition, our app provides the tools you need to succeed.</p>
+            <p>With seamless Google integration, your meal data is always accessible and can be easily shared with nutritionists, doctors, or family members. We believe that tracking your food should be as simple as eating it.</p>
+        </div>
+    </section>
+
+    <footer id="contact">
+        <div class="container">
+            <div class="footer-content">
+                <div class="footer-section">
+                    <h3>Contact Us</h3>
+                    <p>Email: eslamgamalelsayed97@gmail</p>
+                    <p>For support and feedback</p>
+                </div>
+                <div class="footer-section">
+                    <h3>Legal</h3>
+                    <p><a href="#" onclick="showPrivacy(); return false;">Privacy Policy</a></p>
+                    <p><a href="#terms">Terms of Service</a></p>
+                    <p><a href="#support">Support</a></p>
+                </div>
+                <div class="footer-section">
+                    <h3>Developer</h3>
+                    <p>Created by Eslam Gamal</p>
+                    <p>Independent Developer</p>
+                </div>
+            </div>
+            <div class="footer-bottom">
+                <p>&copy; 2025 Food Diary. All rights reserved.</p>
+            </div>
+        </div>
+    </footer>
+
+    <!-- Privacy Policy Section (Required for Google verification) -->
+    <section id="privacy-policy" style="background: white; padding: 60px 0; display: none;">
+        <div class="container">
+            <div style="max-width: 800px; margin: 0 auto;">
+                <h2 style="color: #2c5aa0; border-bottom: 2px solid #2c5aa0; padding-bottom: 10px; margin-bottom: 30px;">Privacy Policy for Food Diary App</h2>
+                
+                <div style="background: #f5f5f5; padding: 15px; border-radius: 8px; margin-bottom: 30px;">
+                    <strong>Last updated:</strong> August 28, 2025
+                </div>
+
+                <h3 style="color: #2c5aa0; margin-top: 30px;">1. Information We Collect</h3>
+                <p>Food Diary App collects the following information:</p>
+                <ul>
+                    <li><strong>Google Account Information:</strong> Email address and profile name when you sign in with Google</li>
+                    <li><strong>Meal Data:</strong> Food items, categories (breakfast, lunch, dinner, snacks), and timestamps that you manually enter</li>
+                    <li><strong>Usage Data:</strong> App performance and crash reports to improve the service</li>
+                </ul>
+
+                <h3 style="color: #2c5aa0; margin-top: 30px;">2. How We Use Your Information</h3>
+                <p>We use your information to:</p>
+                <ul>
+                    <li>Create and maintain your personal food diary</li>
+                    <li>Sync your meal data across your devices</li>
+                    <li>Create a personalized Google Spreadsheet in your Google Drive</li>
+                    <li>Provide customer support</li>
+                    <li>Improve the app's functionality</li>
+                </ul>
+
+                <h3 style="color: #2c5aa0; margin-top: 30px;">3. Data Storage and Security</h3>
+                <p>Your data is stored securely:</p>
+                <ul>
+                    <li><strong>Google Sheets:</strong> Your meal data is stored in a spreadsheet in your own Google Drive</li>
+                    <li><strong>Local Device:</strong> Temporary data is stored locally on your device</li>
+                    <li><strong>Firebase:</strong> Authentication data is handled securely by Google Firebase</li>
+                </ul>
+
+                <h3 style="color: #2c5aa0; margin-top: 30px;">4. Data Sharing</h3>
+                <p>We do not sell, trade, or share your personal information with third parties, except:</p>
+                <ul>
+                    <li>With Google services (Sheets, Drive, Authentication) as necessary for app functionality</li>
+                    <li>When required by law or to protect our legal rights</li>
+                </ul>
+
+                <h3 style="color: #2c5aa0; margin-top: 30px;">5. Third-Party Services</h3>
+                <p>This app uses the following third-party services:</p>
+                <ul>
+                    <li><strong>Google Sign-In:</strong> For user authentication</li>
+                    <li><strong>Google Sheets API:</strong> To create and manage your food diary spreadsheet</li>
+                    <li><strong>Google Drive API:</strong> To save spreadsheets in your Google Drive</li>
+                    <li><strong>Firebase:</strong> For authentication and app analytics</li>
+                </ul>
+
+                <h3 style="color: #2c5aa0; margin-top: 30px;">6. Your Rights</h3>
+                <p>You have the right to:</p>
+                <ul>
+                    <li><strong>Access:</strong> View all your data within the app and your Google Spreadsheet</li>
+                    <li><strong>Delete:</strong> Remove meals from your diary or delete your entire spreadsheet</li>
+                    <li><strong>Export:</strong> Download your data from your Google Spreadsheet</li>
+                    <li><strong>Revoke Access:</strong> Disconnect the app from your Google account at any time</li>
+                </ul>
+
+                <h3 style="color: #2c5aa0; margin-top: 30px;">7. Data Retention</h3>
+                <p>Your meal data is retained:</p>
+                <ul>
+                    <li>In your Google Spreadsheet until you delete it</li>
+                    <li>Locally on your device until you uninstall the app</li>
+                    <li>Authentication data is managed by Google Firebase</li>
+                </ul>
+
+                <h3 style="color: #2c5aa0; margin-top: 30px;">8. Children's Privacy</h3>
+                <p>This app is not intended for children under 13. We do not knowingly collect personal information from children under 13.</p>
+
+                <h3 style="color: #2c5aa0; margin-top: 30px;">9. Changes to This Policy</h3>
+                <p>We may update this privacy policy from time to time. We will notify you of any changes by posting the new privacy policy in the app and updating the "Last updated" date.</p>
+
+                <h3 style="color: #2c5aa0; margin-top: 30px;">10. Contact Us</h3>
+                <p>If you have any questions about this privacy policy, please contact us at:</p>
+                <ul>
+                    <li><strong>Email:</strong> eslamgamalelsayed97@gmail.com</li>
+                    <li><strong>Through the app:</strong> Use the feedback option in the navigation menu</li>
+                </ul>
+
+                <h3 style="color: #2c5aa0; margin-top: 30px;">11. Permissions Explanation</h3>
+                <p><strong>Internet Access:</strong> Required to sync data with Google Sheets and authenticate with Google</p>
+                <p><strong>Network State:</strong> To check connectivity before attempting sync operations</p>
+                <p><strong>Google Account Access:</strong> To create and access your personal food diary spreadsheet</p>
+
+                <hr style="margin: 40px 0; border: none; border-top: 1px solid #ddd;">
+                <p><em>This privacy policy is effective as of August 28, 2025, and was last updated on August 28, 2025.</em></p>
+            </div>
+        </div>
+    </section>
+</body>
+</html>

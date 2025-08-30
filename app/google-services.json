@@ -14,11 +14,27 @@
       },
       "oauth_client": [
         {
-          "client_id": "748160550116-piqiqrbqtqcn646vdeokav4jt7rcg0ua.apps.googleusercontent.com",
+          "client_id": "748160550116-jknv3n04lgeuni4fjagqshlneb63ljeg.apps.googleusercontent.com",
           "client_type": 1,
           "android_info": {
             "package_name": "com.eslamgamal.fooddiary",
             "certificate_hash": "444454ae9cf003b6f4461f368e51b414275dca02"
+          }
+        },
+        {
+          "client_id": "748160550116-piqiqrbqtqcn646vdeokav4jt7rcg0ua.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.eslamgamal.fooddiary",
+            "certificate_hash": "c4ee6a6c05034cb11dc55309490aa1fc3db795e5"
+          }
+        },
+        {
+          "client_id": "748160550116-ppohdo21os9hje2h6n3g87voano206bu.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.eslamgamal.fooddiary",
+            "certificate_hash": "991da9c977da52107262fbad5251daeb412afac9"
           }
         },
         {

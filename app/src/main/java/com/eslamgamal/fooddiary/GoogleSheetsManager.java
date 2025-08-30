@@ -2,6 +2,8 @@ package com.eslamgamal.fooddiary;
 
 import android.content.Context;
 import android.content.SharedPreferences;
+import android.os.Handler;
+import android.os.Looper;
 import android.util.Log;
 
 import com.google.android.gms.auth.api.signin.GoogleSignIn;
@@ -47,6 +49,7 @@ public class GoogleSheetsManager {
     private Sheets sheetsService;
     private Context context;
     private ExecutorService executor;
+    private Handler mainHandler; // Add this for UI callbacks
     private String spreadsheetId;
     private boolean isInitialized = false;
     private boolean isInitializing = false;
@@ -74,6 +77,7 @@ public class GoogleSheetsManager {
     public GoogleSheetsManager(Context context) {
         this.context = context;
         this.executor = Executors.newSingleThreadExecutor();
+        this.mainHandler = new Handler(Looper.getMainLooper()); // Initialize handler
         this.prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE);
 
         // Load saved spreadsheet ID
@@ -201,11 +205,13 @@ public class GoogleSheetsManager {
     }
 
     public void syncMealToSheets(Meal meal, SyncCallback callback) {
-        if (!checkInitialization(callback)) {
-            return;
-        }
-
+        // Move the entire operation to background thread
         executor.execute(() -> {
+            if (!checkInitialization()) {
+                mainHandler.post(() -> callback.onError("Sheets service not initialized"));
+                return;
+            }
+
             try {
                 List<List<Object>> values = Arrays.asList(
                         Arrays.asList(
@@ -213,37 +219,38 @@ public class GoogleSheetsManager {
                                 meal.getCategory(),
                                 meal.getName(),
                                 meal.getFormattedTime()
-                                // Removed meal.getTimestamp().getTime()
                         )
                 );
 
                 ValueRange body = new ValueRange().setValues(values);
 
                 AppendValuesResponse result = sheetsService.spreadsheets().values()
-                        .append(spreadsheetId, "Sheet1!A:D", body) // Changed from A:E to A:D
+                        .append(spreadsheetId, "Sheet1!A:D", body)
                         .setValueInputOption("RAW")
                         .setInsertDataOption("INSERT_ROWS")
                         .execute();
 
                 Log.d(TAG, "Meal synced to sheets: " + meal.getName());
-                callback.onSuccess("Meal synced successfully");
+                mainHandler.post(() -> callback.onSuccess("Meal synced successfully"));
 
             } catch (IOException e) {
                 Log.e(TAG, "Failed to sync meal to sheets", e);
-                callback.onError("Failed to sync meal: " + e.getMessage());
+                mainHandler.post(() -> callback.onError("Failed to sync meal: " + e.getMessage()));
             } catch (Exception e) {
                 Log.e(TAG, "Unexpected error syncing meal", e);
-                callback.onError("Unexpected error: " + e.getMessage());
+                mainHandler.post(() -> callback.onError("Unexpected error: " + e.getMessage()));
             }
         });
     }
 
     public void syncMultipleMealsToSheets(List<Meal> meals, SyncCallback callback) {
-        if (!checkInitialization(callback)) {
-            return;
-        }
-
+        // Move the entire operation to background thread
         executor.execute(() -> {
+            if (!checkInitialization()) {
+                mainHandler.post(() -> callback.onError("Sheets service not initialized"));
+                return;
+            }
+
             try {
                 List<List<Object>> values = new ArrayList<>();
 
@@ -253,32 +260,35 @@ public class GoogleSheetsManager {
                             meal.getCategory(),
                             meal.getName(),
                             meal.getFormattedTime()
-                            // Removed meal.getTimestamp().getTime()
                     ));
                 }
 
                 ValueRange body = new ValueRange().setValues(values);
 
                 AppendValuesResponse result = sheetsService.spreadsheets().values()
-                        .append(spreadsheetId, "Sheet1!A:D", body) // Changed from A:E to A:D
+                        .append(spreadsheetId, "Sheet1!A:D", body)
                         .setValueInputOption("RAW")
                         .setInsertDataOption("INSERT_ROWS")
                         .execute();
 
                 Log.d(TAG, "Multiple meals synced to sheets: " + meals.size());
-                callback.onSuccess(meals.size() + " meals synced successfully");
+                mainHandler.post(() -> callback.onSuccess(meals.size() + " meals synced successfully"));
 
             } catch (IOException e) {
                 Log.e(TAG, "Failed to sync meals to sheets", e);
-                callback.onError("Failed to sync meals: " + e.getMessage());
+                mainHandler.post(() -> callback.onError("Failed to sync meals: " + e.getMessage()));
             }
         });
     }
 
     public void loadMealsFromSheets(LoadCallback callback) {
-        if (!checkInitialization(callback)) return;
-
+        // Move the entire operation to background thread
         executor.execute(() -> {
+            if (!checkInitialization()) {
+                mainHandler.post(() -> callback.onError("Sheets service not initialized"));
+                return;
+            }
+
             try {
                 ValueRange response = sheetsService.spreadsheets().values()
                         .get(spreadsheetId, "Sheet1!A2:D")
@@ -305,11 +315,11 @@ public class GoogleSheetsManager {
                 }
 
                 Log.d(TAG, "Loaded " + meals.size() + " meals from sheets");
-                callback.onMealsLoaded(meals);
+                mainHandler.post(() -> callback.onMealsLoaded(meals));
 
             } catch (IOException e) {
                 Log.e(TAG, "Failed to load meals from sheets", e);
-                callback.onError("Failed to load meals: " + e.getMessage());
+                mainHandler.post(() -> callback.onError("Failed to load meals: " + e.getMessage()));
             }
         });
     }
@@ -335,11 +345,13 @@ public class GoogleSheetsManager {
     }
 
     public void deleteMealFromSheets(Meal mealToDelete, SyncCallback callback) {
-        if (!checkInitialization(callback)) {
-            return;
-        }
-
+        // Move the entire operation to background thread
         executor.execute(() -> {
+            if (!checkInitialization()) {
+                mainHandler.post(() -> callback.onError("Sheets service not initialized"));
+                return;
+            }
+
             try {
                 // Get all data to find the row to delete
                 ValueRange response = sheetsService.spreadsheets().values()
@@ -393,15 +405,15 @@ public class GoogleSheetsManager {
                     sheetsService.spreadsheets().batchUpdate(spreadsheetId, batchRequest).execute();
 
                     Log.d(TAG, "Meal deleted from sheets: " + mealToDelete.getName() + " at " + mealToDelete.getFormattedTime());
-                    callback.onSuccess("Meal deleted successfully");
+                    mainHandler.post(() -> callback.onSuccess("Meal deleted successfully"));
                 } else {
                     Log.w(TAG, "Meal not found in spreadsheet: " + targetSignature);
-                    callback.onError("Meal not found in spreadsheet");
+                    mainHandler.post(() -> callback.onError("Meal not found in spreadsheet"));
                 }
 
             } catch (IOException e) {
                 Log.e(TAG, "Failed to delete meal from sheets", e);
-                callback.onError("Failed to delete meal: " + e.getMessage());
+                mainHandler.post(() -> callback.onError("Failed to delete meal: " + e.getMessage()));
             }
         });
     }
@@ -411,7 +423,7 @@ public class GoogleSheetsManager {
         return date + "|" + time + "|" + name + "|" + category;
     }
 
-    // 6. Helper method to reconstruct timestamp from date and time strings
+    // Helper method to reconstruct timestamp from date and time strings
     private java.util.Date reconstructTimestamp(String dateStr, String timeStr) {
         try {
             // Assuming date format is "yyyy-MM-dd" and time format is "HH:mm"
@@ -424,50 +436,44 @@ public class GoogleSheetsManager {
     }
 
     public void clearAllData(SyncCallback callback) {
-        if (!checkInitialization(callback)) {
-            return;
-        }
-
+        // Move the entire operation to background thread
         executor.execute(() -> {
+            if (!checkInitialization()) {
+                mainHandler.post(() -> callback.onError("Sheets service not initialized"));
+                return;
+            }
+
             try {
                 ClearValuesRequest clearRequest = new ClearValuesRequest();
                 sheetsService.spreadsheets().values()
-                        .clear(spreadsheetId, "Sheet1!A2:D", clearRequest) // Changed from A2:E to A2:D
+                        .clear(spreadsheetId, "Sheet1!A2:D", clearRequest)
                         .execute();
 
                 Log.d(TAG, "All meal data cleared from sheets");
-                callback.onSuccess("All data cleared successfully");
+                mainHandler.post(() -> callback.onSuccess("All data cleared successfully"));
 
             } catch (IOException e) {
                 Log.e(TAG, "Failed to clear data from sheets", e);
-                callback.onError("Failed to clear data: " + e.getMessage());
+                mainHandler.post(() -> callback.onError("Failed to clear data: " + e.getMessage()));
             }
         });
     }
 
-    // Helper method to check if service is initialized
-    private boolean checkInitialization(SyncCallback callback) {
+    // Updated helper method - remove callback parameter and make synchronous
+    private boolean checkInitialization() {
         if (!isInitialized) {
-            String error = "Sheets service not initialized";
-            Log.w(TAG, error);
-            if (callback != null) {
-                callback.onError(error);
-            }
+            Log.w(TAG, "Sheets service not initialized");
             return false;
         }
 
         if (spreadsheetId == null) {
-            Log.w(TAG, "Spreadsheet ID is null, creating a new spreadsheet...");
-            GoogleSignInAccount account = GoogleSignIn.getLastSignedInAccount(context);
-            if (account != null) {
-                initializeUserSpreadsheet(account); // async create
-            }
-            if (callback != null) callback.onError("Spreadsheet not ready, please retry");
+            Log.w(TAG, "Spreadsheet ID is null");
             return false;
         }
 
         try {
             sheetsService.spreadsheets().get(spreadsheetId).execute();
+            return true;
         } catch (IOException e) {
             Log.w(TAG, "Spreadsheet ID is invalid or deleted, recreating...");
             prefs.edit().remove(KEY_SPREADSHEET_ID).apply();
@@ -476,48 +482,8 @@ public class GoogleSheetsManager {
             if (account != null) {
                 initializeUserSpreadsheet(account);
             }
-            if (callback != null) callback.onError("Spreadsheet was deleted, creating a new one. Please retry.");
             return false;
         }
-
-        return true;
-    }
-
-    // Helper method for LoadCallback
-    private boolean checkInitialization(LoadCallback callback) {
-        if (!isInitialized) {
-            String error = "Sheets service not initialized";
-            Log.w(TAG, error);
-            if (callback != null) {
-                callback.onError(error);
-            }
-            return false;
-        }
-
-        if (spreadsheetId == null) {
-            String error = "Spreadsheet not ready";
-            Log.w(TAG, error);
-            if (callback != null) {
-                callback.onError(error);
-            }
-            return false;
-        }
-
-        try {
-            sheetsService.spreadsheets().get(spreadsheetId).execute();
-        } catch (IOException e) {
-            Log.w(TAG, "Spreadsheet ID is invalid or deleted, recreating...");
-            prefs.edit().remove(KEY_SPREADSHEET_ID).apply();
-            spreadsheetId = null;
-            GoogleSignInAccount account = GoogleSignIn.getLastSignedInAccount(context);
-            if (account != null) {
-                initializeUserSpreadsheet(account);
-            }
-            if (callback != null) callback.onError("Spreadsheet was deleted, creating a new one. Please retry.");
-            return false;
-        }
-
-        return true;
     }
 
     public String getSpreadsheetUrl() {
@@ -528,27 +494,24 @@ public class GoogleSheetsManager {
     }
 
     private void validateOrCreateSpreadsheet(GoogleSignInAccount account) {
-        executor.execute(() -> {
-            try {
-                if (spreadsheetId != null) {
-                    // Try to fetch spreadsheet metadata
-                    sheetsService.spreadsheets().get(spreadsheetId).execute();
-                    Log.d(TAG, "Spreadsheet exists and is valid: " + spreadsheetId);
-                } else {
-                    throw new IOException("Spreadsheet ID is null");
-                }
-            } catch (IOException e) {
-                Log.w(TAG, "Spreadsheet not found or deleted, creating a new one...");
-                // Reset stored ID
-                prefs.edit().remove(KEY_SPREADSHEET_ID).apply();
-                spreadsheetId = null;
-                // Create a new sheet
-                initializeUserSpreadsheet(account);
+        // This is already called from executor thread in initializeService()
+        try {
+            if (spreadsheetId != null) {
+                // Try to fetch spreadsheet metadata
+                sheetsService.spreadsheets().get(spreadsheetId).execute();
+                Log.d(TAG, "Spreadsheet exists and is valid: " + spreadsheetId);
+            } else {
+                throw new IOException("Spreadsheet ID is null");
             }
-        });
+        } catch (IOException e) {
+            Log.w(TAG, "Spreadsheet not found or deleted, creating a new one...");
+            // Reset stored ID
+            prefs.edit().remove(KEY_SPREADSHEET_ID).apply();
+            spreadsheetId = null;
+            // Create a new sheet
+            initializeUserSpreadsheet(account);
+        }
     }
-
-    
 
     public boolean isReady() {
         boolean ready = isInitialized && spreadsheetId != null;
